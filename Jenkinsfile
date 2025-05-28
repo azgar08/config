@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Clean Workspace') {
             steps {
-                deleteDir() // <-- Changed here
+                cleanWs()
             }
         }
 
@@ -24,6 +24,12 @@ pipeline {
             }
         }
 
+        stage('Junit Test & Security Tests') {
+            steps {
+                echo 'Empty'
+            }
+        }
+
         stage('Docker Build') {
             steps {
                 script {
@@ -32,4 +38,18 @@ pipeline {
             }
         }
     }  // Close stages block
+
+    stage('Docker Image Push into ECR') {
+    steps {
+        script {
+            docker.withRegistry(
+                'https://017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1',
+                'ecr:us-east-1:aws-ecr'
+            ) {
+                app.push("${env.BUILD_NUMBER}")
+                app.push("latest")
+            }
+        }
+    }
+}
 }  // Close pipeline block
