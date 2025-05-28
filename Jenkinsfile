@@ -101,8 +101,6 @@ pipeline {
                         """
                     }
                 }
-
-                sleep(time: 5, unit: 'MINUTES')
             }
         }
     }
