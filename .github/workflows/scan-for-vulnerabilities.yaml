@@ -1,0 +1,51 @@
+name: "When updates are pushed or the defined schedule is triggered, scan the container and application for vulnerabilities"
+
+on:
+
+  push:
+
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  
+  build:
+    
+    name: Build Image
+    runs-on: ubuntu-latest
+
+   
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v2
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+   
+      
+    - name: Build image
+      run: | 
+          docker build -t "$IMAGE:$IMAGE_VERSION" \
+            --build-arg IMAGE_VERSION="$IMAGE_VERSION" \
+            --build-arg IMAGE_CREATE_DATE="`date -u +"%Y-%m-%dT%H:%M:%SZ"`" \
+            --build-arg IMAGE_SOURCE_REVISION="`git rev-parse HEAD`" \
+            --file src/app/Dockerfile src/app
+      
+            
+    - name: Run Trivy vulnerability scanner
+      run: |
+          curl -L https://github.com/aquasecurity/trivy/releases/download/v0.19.2/trivy_0.19.2_Linux-64bit.tar.gz | tar xvzf - contrib trivy
+          chmod 755 trivy
+          mv trivy /usr/local/bin/trivy
+          trivy image --format template --template "@contrib/sarif.tpl" --output trivy-results.sarif $IMAGE:$IMAGE_VERSION
+
+    - name: Upload container results to GitHub Code Scanning
+      uses: github/codeql-action/upload-sarif@v1
+      with:
+          sarif_file: trivy-results.sarif
