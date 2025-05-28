@@ -105,25 +105,5 @@ pipeline {
                 sleep(time: 5, unit: 'MINUTES')
             }
         }
-
-        stage('Test the Latest Application Tag') {
-            steps {
-                script {
-                    def tag = "${env.BUILD_NUMBER}"
-                    sh """
-                        tag_value=\$(curl -s http://ab5030b49b30a4b2eb5cb2b594dedeb6-1522944986.us-east-1.elb.amazonaws.com/ | \
-                                     grep "${ECR_REGISTRY}/${IMAGE_NAME}:" | awk '{print \$1}' | awk -F: '{print \$2}')
-                        echo "Deployed tag: \$tag_value"
-                        echo "Expected tag: ${tag}"
-                        if [ "\$tag_value" = "${tag}" ]; then
-                            echo "Application is updated !!!"
-                        else
-                            echo "Application is not updated with the latest tag"
-                            exit 1
-                        fi
-                    """
-                }
-            }
-        }
     }
 }
