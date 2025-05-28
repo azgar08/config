@@ -22,11 +22,11 @@ RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 
 # Install app dependencies
-COPY ${WORKSPACE}/src/app/package.json /usr/src/app/
+COPY package.json /usr/src/app/
 RUN npm install
 
 # Bundle app source
-COPY ${WORKSPACE}/src/app /usr/src/app
+COPY . /usr/src/app
 
 USER node
 CMD [ "npm", "start" ]
