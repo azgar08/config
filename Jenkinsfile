@@ -27,20 +27,8 @@ pipeline {
         stage('Docker Build') {
             steps {
                 script {
-                    app = docker.build("jenkins_pipeline", "-f src/app/Dockerfile src/app")
+                    app = docker.build("jenkins_pipeline_1", "-f src/app/Dockerfile src/app")
                 }
             }
         }
 
-        stage('Docker Image push into ECR') {
-            steps {
-                script {
-                    docker.withRegistry('https://267767410086.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline', 'ecr:us-east-1:aws-credentials') {
-                        app.push("${env.BUILD_NUMBER}")
-                        app.push("latest")
-                    }
-                }
-            }
-        }
-    }
-}
