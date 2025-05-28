@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    environment {
+        AWS_REGION = 'us-east-1'
+        ECR_REGISTRY = '017820667794.dkr.ecr.us-east-1.amazonaws.com'
+        IMAGE_NAME = 'jenkins_pipeline_1'
+    }
+
     options {
         skipStagesAfterUnstable()
     }
@@ -26,31 +32,36 @@ pipeline {
 
         stage('Junit Test & Security Tests') {
             steps {
-                echo 'Empty'
+                echo 'Running Junit and Security Tests... (placeholder)'
             }
         }
 
         stage('Docker Build') {
             steps {
                 script {
-                    app = docker.build("jenkins_pipeline_1", "-f src/app/Dockerfile src/app")
+                    app = docker.build("${ECR_REGISTRY}/${IMAGE_NAME}", "-f src/app/Dockerfile src/app")
                 }
             }
         }
 
-        // ✅ Moved inside stages block
-        stage('Docker Image Push into ECR') {
+        stage('Authenticate to ECR') {
             steps {
                 script {
-                    docker.withRegistry(
-                        'https://017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1',
-                        'ecr:us-east-1:aws-ecr'
-                    ) {
-                        app.push("${env.BUILD_NUMBER}")
-                        app.push("latest")
-                    }
+                    sh '''
+                        aws ecr get-login-password --region $AWS_REGION | \
+                        docker login --username AWS --password-stdin $ECR_REGISTRY
+                    '''
                 }
             }
         }
-    }  // ✅ Properly closes the stages block
+
+        stage('Docker Image Push into ECR') {
+            steps {
+                script {
+                    app.push("${BUILD_NUMBER}")
+                    app.push("latest")
+                }
+            }
+        }
+    }
 }
