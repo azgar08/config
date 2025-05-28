@@ -31,4 +31,5 @@ pipeline {
                 }
             }
         }
-  }
+    }  // Close stages block
+}  // Close pipeline block
