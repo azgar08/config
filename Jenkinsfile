@@ -75,12 +75,12 @@ pipeline {
             steps {
                 cleanWs()
                 script {
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: "*/${GIT_REPO_BRANCH}"]],
-                        userRemoteConfigs: [[
-                            url: "${HELM_GIT_REPO_URL}",
-                            credentialsId: 'github-credentials'
+                    checkout([ 
+                        $class: 'GitSCM', 
+                        branches: [[name: "*/${GIT_REPO_BRANCH}"]], 
+                        userRemoteConfigs: [[ 
+                            url: "${HELM_GIT_REPO_URL}", 
+                            credentialsId: 'github-credentials' 
                         ]]
                     ])
                 }
@@ -99,11 +99,13 @@ pipeline {
                             git commit -m "Triggered Build - update tag to ${tag}" || echo "No changes to commit"
                             git push https://${GIT_USER}:${GIT_TOKEN}@github.com/azgar08/config.git ${GIT_REPO_BRANCH}
                         """
-                    sleep(time: 5, unit: &quot;MINUTES&quot;)
                     }
+                    sleep(time: 5, unit: "MINUTES")  // Fixed here
                 }
-                
-                stage('Test the Latest Application Tag') {
+            }
+        }
+
+        stage('Test the Latest Application Tag') {
             environment {
                 TAG_ID = "${env.BUILD_NUMBER}"
             }
