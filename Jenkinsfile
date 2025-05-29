@@ -99,8 +99,30 @@ pipeline {
                             git commit -m "Triggered Build - update tag to ${tag}" || echo "No changes to commit"
                             git push https://${GIT_USER}:${GIT_TOKEN}@github.com/azgar08/config.git ${GIT_REPO_BRANCH}
                         """
+                    sleep(time: 5, unit: &quot;MINUTES&quot;)
                     }
                 }
+                
+                stage('Test the Latest Application Tag') {
+            environment {
+                TAG_ID = "${env.BUILD_NUMBER}"
+            }
+            steps {
+                sh '''
+                #!/bin/bash
+                tag_value=$(curl -L "https://af12c5888077c477686a6fe08537501c-f7970e88d903786c.elb.us-east-1.amazonaws.com//" | \
+                            grep "017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1:" | \
+                            awk '{print $1}' | awk -F: '{print $2}')
+                set -x
+                echo "Deployed tag: $tag_value"
+                echo "Expected tag: $TAG_ID"
+                if [ "$tag_value" = "$TAG_ID" ]; then
+                    echo "Application is updated !!!"
+                else
+                    echo "Application is not updated with the latest tag"
+                    exit 1
+                fi
+                '''
             }
         }
     }
