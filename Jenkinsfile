@@ -112,14 +112,15 @@ pipeline {
             steps {
                 sh '''
                 #!/bin/bash
-                response=$(curl -skL http://af12c5888077c477686a6fe08537501c-f7970e88d903786c.elb.us-east-1.amazonaws.com/)
-                tag_value=$(echo "$response" | grep -o 'jenkins_pipeline_1:[0-9]*' | awk -F: '{print $2}')
-                echo "Deployed tag: $tag_value"
+                deployed_image=$(argocd app get hello-kubernetes --output json | jq -r '.status.summary.images[]' | grep jenkins_pipeline_1 | awk -F: '{print $2}')
+                echo "Deployed tag: $deployed_image"
                 echo "Expected tag: ${BUILD_NUMBER}"
-                if [ "$tag_value" != "${BUILD_NUMBER}" ]; then
+
+                if [ "$deployed_image" != "${BUILD_NUMBER}" ]; then
                     echo "Application is not updated with the latest tag"
                     exit 1
                 fi
+
                 '''
             }
         }
