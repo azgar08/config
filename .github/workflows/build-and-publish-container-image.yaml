@@ -22,7 +22,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v1
       with:  
         image: jenkins_pipeline_1
-        registry: https://267767410086.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1
+        registry: 017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1
       env:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
