@@ -112,7 +112,7 @@ pipeline {
             steps {
                 sh '''
                 #!/bin/bash
-                tag_value=$(curl -L "https://af12c5888077c477686a6fe08537501c-f7970e88d903786c.elb.us-east-1.amazonaws.com//" | \
+                tag_value=$(curl -k -L "https://af12c5888077c477686a6fe08537501c-f7970e88d903786c.elb.us-east-1.amazonaws.com//" | \
                             grep "017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1:" | \
                             awk '{print $1}' | awk -F: '{print $2}')
                 set -x
