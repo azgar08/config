@@ -4,7 +4,7 @@ pipeline {
     environment {
         AWS_REGION = 'us-east-1'
         ECR_REGISTRY = '017820667794.dkr.ecr.us-east-1.amazonaws.com'
-        IMAGE_NAME = 'jenkins_pipeline_1_1'
+        IMAGE_NAME = 'jenkins_pipeline_1'
         HELM_GIT_REPO_URL = 'https://github.com/azgar08/config.git'
         GIT_REPO_EMAIL = 'azgarali.a.n@gmail.com'
         GIT_REPO_BRANCH = 'main'
@@ -112,7 +112,7 @@ pipeline {
                 sh '''
                 #!/bin/bash
                 tag_value=$(curl -L "https://af12c5888077c477686a6fe08537501c-f7970e88d903786c.elb.us-east-1.amazonaws.com//" | \
-                            grep "017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1_1:" | \
+                            grep "017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1:" | \
                             awk '{print $1}' | awk -F: '{print $2}')
                 set -x
                 echo "Deployed tag: $tag_value"
