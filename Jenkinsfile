@@ -100,7 +100,7 @@ pipeline {
                             git push https://${GIT_USER}:${GIT_TOKEN}@github.com/azgar08/config.git ${GIT_REPO_BRANCH}
                         """
                     }
-                    # sleep(time: 12, unit: "MINUTES")  // Fixed here
+                    sleep(time: 12, unit: "MINUTES")  // Fixed here
                 }
             }
         }
