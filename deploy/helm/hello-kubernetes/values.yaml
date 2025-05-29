@@ -13,7 +13,7 @@ deployment:
   container:
     image:
       repository: "017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1"
-      tag: "8" # uses chart appVersion if not provided
+      tag: "9" # uses chart appVersion if not provided
       pullPolicy: Always
     port: 8080
   # Currently only linux images on amd64 architecture are supported - support for arm64 and windows/amd64 coming ...
