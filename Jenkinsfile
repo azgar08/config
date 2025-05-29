@@ -75,12 +75,12 @@ pipeline {
             steps {
                 cleanWs()
                 script {
-                    checkout([ 
-                        $class: 'GitSCM', 
-                        branches: [[name: "*/${GIT_REPO_BRANCH}"]], 
-                        userRemoteConfigs: [[ 
-                            url: "${HELM_GIT_REPO_URL}", 
-                            credentialsId: 'github-credentials' 
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: "*/${GIT_REPO_BRANCH}"]],
+                        userRemoteConfigs: [[
+                            url: "${HELM_GIT_REPO_URL}",
+                            credentialsId: 'github-credentials'
                         ]]
                     ])
                 }
@@ -100,28 +100,31 @@ pipeline {
                             git push https://${GIT_USER}:${GIT_TOKEN}@github.com/azgar08/config.git ${GIT_REPO_BRANCH}
                         """
                     }
-                    sleep(time: 3, unit: "MINUTES")  // Fixed here
+                    sleep(time: 3, unit: "MINUTES")
                 }
             }
         }
 
         stage('Test the Latest Application Tag') {
-            environment {
-                TAG_ID = "${env.BUILD_NUMBER}"
-            }
             steps {
-                sh '''
-                #!/bin/bash
-                deployed_image=$(argocd app get hello-kubernetes --output json | jq -r '.status.summary.images[]' | grep jenkins_pipeline_1 | awk -F: '{print $2}')
-                echo "Deployed tag: $deployed_image"
-                echo "Expected tag: ${BUILD_NUMBER}"
+                script {
+                    def valuesFile = 'deploy/helm/hello-kubernetes/values.yaml'
+                    def expectedTag = "${env.BUILD_NUMBER}".trim()
 
-                if [ "$deployed_image" != "${BUILD_NUMBER}" ]; then
-                    echo "Application is not updated with the latest tag"
-                    exit 1
-                fi
+                    def currentTag = sh(
+                        script: "yq eval '.deployment.container.image.tag' ${valuesFile}",
+                        returnStdout: true
+                    ).trim()
 
-                '''
+                    echo "✅ Expected tag: ${expectedTag}"
+                    echo "📄 Found tag in values.yaml: ${currentTag}"
+
+                    if (currentTag == expectedTag) {
+                        echo "Application is updated !!!"
+                    } else {
+                        echo "Application is not updated with the latest tag"
+                    }
+                }
             }
         }
     }
