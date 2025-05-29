@@ -100,7 +100,7 @@ pipeline {
                             git push https://${GIT_USER}:${GIT_TOKEN}@github.com/azgar08/config.git ${GIT_REPO_BRANCH}
                         """
                     }
-                    sleep(time: 5, unit: "MINUTES")  // Fixed here
+                    sleep(time: 3, unit: "MINUTES")  // Fixed here
                 }
             }
         }
@@ -112,15 +112,11 @@ pipeline {
             steps {
                 sh '''
                 #!/bin/bash
-                tag_value=$(curl -k -L "https://af12c5888077c477686a6fe08537501c-f7970e88d903786c.elb.us-east-1.amazonaws.com//" | \
-                            grep "017820667794.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline_1:" | \
-                            awk '{print $1}' | awk -F: '{print $2}')
-                set -x
+                response=$(curl -skL http://af12c5888077c477686a6fe08537501c-f7970e88d903786c.elb.us-east-1.amazonaws.com/)
+                tag_value=$(echo "$response" | grep -o 'jenkins_pipeline_1:[0-9]*' | awk -F: '{print $2}')
                 echo "Deployed tag: $tag_value"
-                echo "Expected tag: $TAG_ID"
-                if [ "$tag_value" = "$TAG_ID" ]; then
-                    echo "Application is updated !!!"
-                else
+                echo "Expected tag: ${BUILD_NUMBER}"
+                if [ "$tag_value" != "${BUILD_NUMBER}" ]; then
                     echo "Application is not updated with the latest tag"
                     exit 1
                 fi
