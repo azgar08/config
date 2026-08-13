@@ -1,1 +1,93 @@
-kubectl scale deployment --all --replicas=0 -n <namespace>
+### Configurations for pipeline
+locals {
+  glue_job_name = var.glue_job_name
+  # Build input for extra py file input
+  extra_py_files = join(",", [for file in var.glue_extra_libs : "s3://${var.s3_glue_asset_bucket}/${file}"])
+
+  # Find more special args: https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-glue-arguments.html
+  # enable monitor job insights: https://docs.aws.amazon.com/glue/latest/dg/monitor-job-insights.html
+  glue_default_args = {
+    "--TempDir"                          = "s3://${var.s3_glue_tmp_bucket}/temporary/"
+    "--spark-event-logs-path"            = "s3://${var.s3_glue_asset_bucket}/sparkHistoryLogs/"
+    "--enable-spark-ui"                  = "true"
+    "--enable-glue-datacatalog"          = "true"
+    "--enable-metrics"                   = "true"
+    "--enable-continuous-cloudwatch-log" = "true"
+    "--class"                            = "GlueApp"
+    "--enable-job-insights"              = "true"
+    "--job-language"                     = "python"
+    "--extra-py-files"                   = local.extra_py_files
+  }
+
+  
+  glue_security_cfg = var.create_security_cfg ? "${var.glue_job_name[0]}-cfg" : var.glue_security_cfg
+
+}
+
+
+
+
+
+### Upload glue source to glue script bucket
+resource "aws_s3_object" "object" {
+  for_each = toset(var.glue_job_name)
+
+  bucket                 = var.s3_glue_script_bucket
+  key                    = "glue-scripts/${replace(each.value, "-", "_")}.py"
+  source                 = "/tmp/src/glue/${replace(each.value, "-", "_")}.py"
+  source_hash            = filemd5("/tmp/src/glue/${replace(each.value, "-", "_")}.py")
+  server_side_encryption = "aws:kms"
+  kms_key_id             = var.encryption_kms
+}
+
+### Glue Security Configuration
+### Deluxe policy to enable all bucket SSE so in order to allow Glue writes to S3
+###   the Glue context has to attach with a Security Configuration to access S3 with custom KMS
+### Limitation: Glue job can attach with ONE Security Configuration only
+###   A Glue job can NOT access to bucket ojects with different encryption KMS keys
+resource "aws_glue_security_configuration" "glue_security" {
+  count = var.create_security_cfg ? 1 : 0
+  name  = local.glue_security_cfg
+
+  encryption_configuration {
+    cloudwatch_encryption {
+      cloudwatch_encryption_mode = "DISABLED"
+    }
+
+    job_bookmarks_encryption {
+      job_bookmarks_encryption_mode = "DISABLED"
+    }
+
+    s3_encryption {
+      kms_key_arn        = var.encryption_kms
+      s3_encryption_mode = "SSE-KMS"
+    }
+  }
+}
+
+### Glue Job
+resource "aws_glue_job" "glue_job" {
+  for_each = toset(var.glue_job_name)
+
+  name        = "${var.project_name}-${each.value}-${var.environment}"
+  role_arn    = var.glue_job_role_arn
+  connections = var.glue_job_connection != [] ? var.glue_job_connection : null
+
+  command {
+    script_location = "s3://${aws_s3_object.object[each.value].id}"
+    name            = var.glue_job_cmd_name
+    python_version  = var.glue_job_cmd_py_version
+  }
+
+  default_arguments = local.glue_default_args
+  tags              = var.tags
+
+  execution_property {
+    max_concurrent_runs = var.glue_job_max_concur
+  }
+
+  max_capacity           = var.glue_job_max_capacity
+  max_retries            = var.glue_job_max_retries
+  execution_class        = var.glue_job_execution_class
+  security_configuration = var.enable_security_cfg ? local.glue_security_cfg : null
+}
