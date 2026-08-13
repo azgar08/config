@@ -1,69 +1,29 @@
-locals {
-  account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
-  region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
-  environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+  glue_security_cfg = var.create_security_cfg ? "${var.glue_job_name[0]}-cfg" : var.glue_security_cfg
 
-  aws_region   = local.region_vars.locals.aws_region
-  environment  = local.environment_vars.locals.environment
-  project_name = local.environment_vars.locals.project_name
-  account_name = local.account_vars.locals.account_name
-
-  source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue"
+  # Extract IAM role name from the role ARN
+  glue_role_name = element(
+    reverse(split("/", var.glue_job_role_arn)),
+    0
+  )
 }
 
-dependency "datalake" {
-  config_path = find_in_parent_folders("datalake")
+variable "glue_log_group_retention_days" {
+  description = "CloudWatch log group retention period for Glue logs"
+  type        = number
+  default     = 30
 }
 
-dependency "common-tags" {
-  config_path = find_in_parent_folders("common-tags")
-}
-
-dependency "iam-open-invoice-processor-glue" {
-  config_path = find_in_parent_folders("iam-open-invoice-processor-glue")
+### Glue CloudWatch Error Log Group
+resource "aws_cloudwatch_log_group" "glue_error" {
+  name              = "/aws-glue/python-jobs/${local.glue_security_cfg}/${local.glue_role_name}/error"
+  retention_in_days = var.glue_log_group_retention_days
 }
 
 
-# These are the variables we have to pass in to use the module specified in the terragrunt configuration above
-inputs = {
-  aws_region               = local.aws_region
-  environment              = local.environment
-  project_name             = local.project_name
-  account_name             = local.account_name
-  glue_job_name            = ["open-invoice-processor"]
-  glue_job_role_arn        = dependency.iam-open-invoice-processor-glue.outputs.iam_role_arn
-  glue_job_max_concur      = "100"
-  glue_job_max_capacity    = "1.0"
-  glue_job_execution_class = "STANDARD"
-  s3_glue_script_bucket    = dependency.datalake.outputs.glue_scripts_s3_id #source bucket
-  encryption_kms           = dependency.datalake.outputs.encyption_kms_arn
-  enable_security_cfg      = true
-  create_security_cfg      = false
-  glue_security_cfg        = dependency.datalake.outputs.glue_kms_security_cfg
-  glue_job_connection      = dependency.datalake.outputs.glue_connection_id
-
-  glue_extra_libs = [
-    "common_modules/HudiTable.py",
-    "common_modules/NotificationService.py",
-    "common_modules/FPFModules/fpf_base_processor.py",
-    "common_modules/FPFModules/fpf_constants.py",
-    "common_modules/FPFModules/fpf_data_providers.py",
-    "common_modules/FPFModules/fpf_exceptions.py",
-    "common_modules/FPFModules/fpf_interfaces.py",
-    "common_modules/FPFModules/fpf_models.py",
-    "common_modules/FPFModules/fpf_stateful_models.py",
-    "common_modules/FPFModules/fpf_utils.py",
-    "common_modules/DBUtil.py"
-  ]
-  s3_glue_asset_bucket = dependency.datalake.outputs.glue_assets_s3_id
-  s3_glue_tmp_bucket   = dependency.datalake.outputs.glue_temporary_s3_id
-
-  tags = merge(dependency.common-tags.outputs.common_tags, {
-    "TerraformPath" = path_relative_to_include()
-  })
+### Glue CloudWatch Output Log Group
+resource "aws_cloudwatch_log_group" "glue_output" {
+  name              = "/aws-glue/python-jobs/${local.glue_security_cfg}/${local.glue_role_name}/output"
+  retention_in_days = var.glue_log_group_retention_days
 }
 
-
-
-/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/error
-/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/output
+glue_log_group_retention_days = 30
