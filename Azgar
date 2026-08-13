@@ -26,4 +26,11 @@ resource "aws_cloudwatch_log_group" "glue_output" {
   retention_in_days = var.glue_log_group_retention_days
 }
 
+resource "aws_cloudwatch_log_group" "glue" {
+  for_each = toset(["error", "output"])
+
+  name              = "/aws-glue/python-jobs/${local.glue_security_cfg}/${local.glue_role_name}/${each.value}"
+  retention_in_days = var.glue_log_group_retention_days
+}
+
 glue_log_group_retention_days = 30
