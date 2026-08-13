@@ -1,2 +1,16 @@
-terragrunt import 'aws_cloudwatch_log_group.glue["error"]' '/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/error'
-terragrunt import 'aws_cloudwatch_log_group.glue["output"]' '/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/output'
+$ terragrunt import 'aws_cloudwatch_log_group.glue["error"]' '/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/error'
+Acquiring state lock. This may take a few moments...
+aws_cloudwatch_log_group.glue["error"]: Importing from ID "C:/Program Files/Git/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/error"...
+aws_cloudwatch_log_group.glue["error"]: Import prepared!
+  Prepared aws_cloudwatch_log_group for import
+aws_cloudwatch_log_group.glue["error"]: Refreshing state... [id=C:/Program Files/Git/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/error]
+╷
+│ Error: reading CloudWatch Logs Log Group (C:/Program Files/Git/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/error): listing CloudWatch Logs Log Groups: operation error CloudWatch Logs: DescribeLogGroups, https response error StatusCode: 400, RequestID: 84ea1a41-f04a-4cbe-b027-158c04c48bb6, InvalidParameterException: 1 validation error detected: Value at 'logGroupNamePrefix' failed to satisfy constraint: Member must satisfy regular expression pattern: [\.\-_/#A-Za-z0-9]+
+│
+│
+╵
+
+Releasing state lock. This may take a few moments...
+time=2026-08-13T15:17:42+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/tf6n3e3Xkjpc9H5KReD95u6hdnc/uHuunNeJwNKJ4qow_KU9bk01oww prefix=[C:\Users\t469203\Desktop\ALI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\glue\glue-open-invoice-processor]
+time=2026-08-13T15:17:42+05:30 level=error msg=1 error occurred:
+        * [C:/Users/T469203/.terragrunt-cache/tf6n3e3Xkjpc9H5KReD95u6hdnc/uHuunNeJwNKJ4qow_KU9bk01oww] exit status 1
