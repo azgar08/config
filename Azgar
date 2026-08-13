@@ -1,36 +1,37 @@
-  glue_security_cfg = var.create_security_cfg ? "${var.glue_job_name[0]}-cfg" : var.glue_security_cfg
+aws_s3_object.object["open-invoice-processor"]: Refreshing state... [id=dlx-raas-dl-697179190149-us-east-1-glue-scripts-dev/glue-scripts/open_invoice_processor.py]
 
-  # Extract IAM role name from the role ARN
-  glue_role_name = element(
-    reverse(split("/", var.glue_job_role_arn)),
-    0
-  )
-}
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
 
-variable "glue_log_group_retention_days" {
-  description = "CloudWatch log group retention period for Glue logs"
-  type        = number
-  default     = 30
-}
+Terraform planned the following actions, but then encountered a problem:
 
-### Glue CloudWatch Error Log Group
-resource "aws_cloudwatch_log_group" "glue_error" {
-  name              = "/aws-glue/python-jobs/${local.glue_security_cfg}/${local.glue_role_name}/error"
-  retention_in_days = var.glue_log_group_retention_days
-}
+  # aws_cloudwatch_log_group.glue["error"] will be created
+  + resource "aws_cloudwatch_log_group" "glue" {
+      + arn                         = (known after apply)
+      + deletion_protection_enabled = (known after apply)
+      + id                          = (known after apply)
+      + log_group_class             = (known after apply)
+      + name                        = "/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/error"
+      + name_prefix                 = (known after apply)
+      + region                      = "us-east-1"
+      + retention_in_days           = 7
+      + skip_destroy                = false
+      + tags_all                    = (known after apply)
+    }
 
+  # aws_cloudwatch_log_group.glue["output"] will be created
+  + resource "aws_cloudwatch_log_group" "glue" {
+      + arn                         = (known after apply)
+      + deletion_protection_enabled = (known after apply)
+      + id                          = (known after apply)
+      + log_group_class             = (known after apply)
+      + name                        = "/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/output"
+      + name_prefix                 = (known after apply)
+      + region                      = "us-east-1"
+      + retention_in_days           = 7
+      + skip_destroy                = false
+      + tags_all                    = (known after apply)
+    }
 
-### Glue CloudWatch Output Log Group
-resource "aws_cloudwatch_log_group" "glue_output" {
-  name              = "/aws-glue/python-jobs/${local.glue_security_cfg}/${local.glue_role_name}/output"
-  retention_in_days = var.glue_log_group_retention_days
-}
-
-resource "aws_cloudwatch_log_group" "glue" {
-  for_each = toset(["error", "output"])
-
-  name              = "/aws-glue/python-jobs/${local.glue_security_cfg}/${local.glue_role_name}/${each.value}"
-  retention_in_days = var.glue_log_group_retention_days
-}
-
-glue_log_group_retention_days = 30
+Plan: 2 to add, 0 to change, 0 to destroy.
