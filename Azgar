@@ -1,15 +1,1 @@
-terraform {
-  source = "git::ssh://git@bitbucket.org:/deluxe-development/aws-elasticache-serverless.git//"
-}
-
-# Include all settings from the root terragrunt.hcl file
-include "root" {
-  path = find_in_parent_folders()
-}
-
-include "stack" {
-  path = find_in_parent_folders("_stacks/ElastiCache/elasticache.hcl")
-}
-
-inputs = {
-}
+kubectl scale deployment --all --replicas=0 -n <namespace>
