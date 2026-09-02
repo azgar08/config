@@ -1,34 +1,30 @@
-* feature/AWS-GLUE
-
-Executing DEV Terragrunt
-
-aws_cloudwatch_log_group.glue["error"]: Importing from ID "/aws-glue/python-jobs/dlx-raas-dl-kms-security-cfg-dev-role/dlx-raas-697179190149-us-east-1-open-invoice-glue-dev-role/error"...
-
-aws_cloudwatch_log_group.glue["error"]: Import prepared!
-
-  Prepared aws_cloudwatch_log_group for import
-
-╷
-
-│ Error: Resource already managed by OpenTofu
-
-│ 
-
-│ OpenTofu is already managing a remote object for
-
-│ aws_cloudwatch_log_group.glue["error"]. To import to this address you must
-
-│ first remove the existing object from the state.
-
-╵
+dlx-genai-docker-local.artifacts.deluxe.com/deluxe.ai/api/mdm-ers-service:T476493.3
 
 
-time=2026-08-19T17:24:17Z level=error msg=tofu invocation failed in /tmp/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/glue/glue-open-invoice-processor/.terragrunt-cache/Ge7p24hkfwLlnfiAIggUYhGBbC8/nzPcPsfLcXGMpWZ30GY93GqxqQ4/glue prefix=[/tmp/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/glue/glue-open-invoice-processor] 
+aws: [ERROR]: An error occurred (ClientException) when calling the DescribeTaskDefinition operation: Unable to describe task definition.
 
-time=2026-08-19T17:24:17Z level=error msg=1 error occurred:
 
-	* [/tmp/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/glue/glue-open-invoice-processor/.terragrunt-cache/Ge7p24hkfwLlnfiAIggUYhGBbC8/nzPcPsfLcXGMpWZ30GY93GqxqQ4/glue] exit status 1
+dlx-genai-docker-local.artifacts.deluxe.com/deluxe.ai/api/mdm-ers-service:T476493.3
 
 
 
-CommandExecution failed with exit code: (1)
+aws: [ERROR]: An error occurred (ParamValidation): Error parsing parameter 'cli-input-json': Invalid JSON received.
+
+Cluster ARN:  arn:aws:ecs:us-east-1:590184044598:cluster/dlx-genai-ers-cluster-dev
+
+Service ARN:  arn:aws:ecs:us-east-1:590184044598:service/dlx-genai-ers-cluster-dev/ers_ecs_service
+
+
+aws: [ERROR]: An error occurred (InvalidParameterException) when calling the UpdateService operation: Invalid Region in ARN
+
+Task deployed:  to arn:aws:ecs:us-east-1:590184044598:service/dlx-genai-ers-cluster-dev/ers_ecs_service
+
+Updating SSM Parameter: /mdm-ers-service/image_version with value: dlx-genai-docker-local.artifacts.deluxe.com/deluxe.ai/api/mdm-ers-service:T476493.3
+
+{
+
+    "Version": 2,
+
+    "Tier": "Standard"
+
+}
