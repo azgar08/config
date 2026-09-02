@@ -1,30 +1,55 @@
-dlx-genai-docker-local.artifacts.deluxe.com/deluxe.ai/api/mdm-ers-service:T476493.3
+#Assume the TF Role
+case <+pipeline.variables.env_delegate> in
+    dev-env-terragrunt-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::<+pipeline.variables.GENAI_Dev_Account>:role/Terraform-Admin-Role --role-session-name DEVSession)
+        aws_account_no=590184044598
+        ;;
+    nonprod-env-terragrunt-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::<+pipeline.variables.GENAI_NonProd_Account>:role/Terraform-Admin-Role --role-session-name NONPRODSession)
+        aws_account_no=339713162037
+        ;;
+    prod-env-terragrunt-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::<+pipeline.variables.GENAI_Prod_Account>:role/Terraform-Admin-Role --role-session-name PRODSession)
+        aws_account_no=471112595495
+        ;;
+    *)
+        echo "Unable to assume role!"
+esac
 
+export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
+export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
+export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
 
-aws: [ERROR]: An error occurred (ClientException) when calling the DescribeTaskDefinition operation: Unable to describe task definition.
+#AWS caller identity
+aws sts get-caller-identity
 
+# gen account S3 state bucket
+aws s3 ls
 
-dlx-genai-docker-local.artifacts.deluxe.com/deluxe.ai/api/mdm-ers-service:T476493.3
+export ImageTag=<+pipeline.stages.Build.spec.execution.steps.Docker_push_and_scan.steps.Build_and_Docker_Push.artifact_Docker_push_and_scan_Build_and_Docker_Push.stepArtifacts.publishedImageArtifacts[1].tag>
+export ImageName=<+pipeline.stages.Build.spec.execution.steps.Docker_push_and_scan.steps.Build_and_Docker_Push.artifact_Docker_push_and_scan_Build_and_Docker_Push.stepArtifacts.publishedImageArtifacts[1].imageName>
 
+echo $ImageName:$ImageTag
 
+existing_taskdef="$(aws ecs describe-task-definition --task-definition=ers-task-definition)"
+echo $existing_taskdef
 
-aws: [ERROR]: An error occurred (ParamValidation): Error parsing parameter 'cli-input-json': Invalid JSON received.
+export new_image="$ImageName:$ImageTag"
+echo $new_image
+new_task_definition=$(jq --arg IMAGE "$new_image" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)' <<< "$existing_taskdef")
+echo $new_task_definition
 
-Cluster ARN:  arn:aws:ecs:us-east-1:590184044598:cluster/dlx-genai-ers-cluster-dev
+new_revision_arn="$(aws ecs register-task-definition --cli-input-json "$new_task_definition" --output text --query 'taskDefinition.taskDefinitionArn')"                         
 
-Service ARN:  arn:aws:ecs:us-east-1:590184044598:service/dlx-genai-ers-cluster-dev/ers_ecs_service
+cluster_arn="arn:aws:ecs:us-east-1:"$aws_account_no":cluster/dlx-genai-ers-cluster-<+pipeline.variables.environment>"
+service_arn="arn:aws:ecs:us-east-1:"$aws_account_no":service/dlx-genai-ers-cluster-<+pipeline.variables.environment>/ers_ecs_service"
+echo "Cluster ARN: " $cluster_arn
+echo "Service ARN: " $service_arn
+aws ecs update-service --cluster="$cluster_arn" --service="$service_arn" --task-definition="$new_revision_arn" --force-new-deployment
+echo "Task deployed: " $new_revision_arn to $service_arn
 
-
-aws: [ERROR]: An error occurred (InvalidParameterException) when calling the UpdateService operation: Invalid Region in ARN
-
-Task deployed:  to arn:aws:ecs:us-east-1:590184044598:service/dlx-genai-ers-cluster-dev/ers_ecs_service
-
-Updating SSM Parameter: /mdm-ers-service/image_version with value: dlx-genai-docker-local.artifacts.deluxe.com/deluxe.ai/api/mdm-ers-service:T476493.3
-
-{
-
-    "Version": 2,
-
-    "Tier": "Standard"
-
-}
+# Update the SSM Parameter Store with the new image version
+ssm_param_name="/mdm-ers-service/image_version"
+echo "Updating SSM Parameter: $ssm_param_name with value: $new_image"
+aws ssm put-parameter --name "$ssm_param_name" --value "$new_image" --type "String" --overwrite
+echo "SSM Parameter updated successfully"
