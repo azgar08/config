@@ -1,55 +1,118 @@
-#Assume the TF Role
+# Assume the TF Role
 case <+pipeline.variables.env_delegate> in
     dev-env-terragrunt-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::<+pipeline.variables.GENAI_Dev_Account>:role/Terraform-Admin-Role --role-session-name DEVSession)
+        aws_credentials_json=$(aws sts assume-role \
+          --role-arn arn:aws:iam::<+pipeline.variables.GENAI_Dev_Account>:role/Terraform-Admin-Role \
+          --role-session-name DEVSession)
         aws_account_no=590184044598
         ;;
+
     nonprod-env-terragrunt-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::<+pipeline.variables.GENAI_NonProd_Account>:role/Terraform-Admin-Role --role-session-name NONPRODSession)
+        aws_credentials_json=$(aws sts assume-role \
+          --role-arn arn:aws:iam::<+pipeline.variables.GENAI_NonProd_Account>:role/Terraform-Admin-Role \
+          --role-session-name NONPRODSession)
         aws_account_no=339713162037
         ;;
+
     prod-env-terragrunt-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::<+pipeline.variables.GENAI_Prod_Account>:role/Terraform-Admin-Role --role-session-name PRODSession)
+        aws_credentials_json=$(aws sts assume-role \
+          --role-arn arn:aws:iam::<+pipeline.variables.GENAI_Prod_Account>:role/Terraform-Admin-Role \
+          --role-session-name PRODSession)
         aws_account_no=471112595495
         ;;
+
     *)
         echo "Unable to assume role!"
+        exit 1
+        ;;
 esac
 
-export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
+export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq --exit-status --raw-output .Credentials.AccessKeyId)
+export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq --exit-status --raw-output .Credentials.SecretAccessKey)
+export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq --exit-status --raw-output .Credentials.SessionToken)
 
-#AWS caller identity
+# Explicit AWS Region
+export AWS_REGION="us-east-1"
+export AWS_DEFAULT_REGION="us-east-1"
+
+echo "AWS Region: $AWS_REGION"
+echo "AWS Account: $aws_account_no"
+
+# AWS caller identity
 aws sts get-caller-identity
 
-# gen account S3 state bucket
-aws s3 ls
+# Check S3
+aws s3 ls --region "$AWS_REGION"
 
+# Get image information
 export ImageTag=<+pipeline.stages.Build.spec.execution.steps.Docker_push_and_scan.steps.Build_and_Docker_Push.artifact_Docker_push_and_scan_Build_and_Docker_Push.stepArtifacts.publishedImageArtifacts[1].tag>
+
 export ImageName=<+pipeline.stages.Build.spec.execution.steps.Docker_push_and_scan.steps.Build_and_Docker_Push.artifact_Docker_push_and_scan_Build_and_Docker_Push.stepArtifacts.publishedImageArtifacts[1].imageName>
 
-echo $ImageName:$ImageTag
-
-existing_taskdef="$(aws ecs describe-task-definition --task-definition=ers-task-definition)"
-echo $existing_taskdef
-
 export new_image="$ImageName:$ImageTag"
-echo $new_image
-new_task_definition=$(jq --arg IMAGE "$new_image" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)' <<< "$existing_taskdef")
-echo $new_task_definition
 
-new_revision_arn="$(aws ecs register-task-definition --cli-input-json "$new_task_definition" --output text --query 'taskDefinition.taskDefinitionArn')"                         
+echo "Image: $new_image"
 
-cluster_arn="arn:aws:ecs:us-east-1:"$aws_account_no":cluster/dlx-genai-ers-cluster-<+pipeline.variables.environment>"
-service_arn="arn:aws:ecs:us-east-1:"$aws_account_no":service/dlx-genai-ers-cluster-<+pipeline.variables.environment>/ers_ecs_service"
-echo "Cluster ARN: " $cluster_arn
-echo "Service ARN: " $service_arn
-aws ecs update-service --cluster="$cluster_arn" --service="$service_arn" --task-definition="$new_revision_arn" --force-new-deployment
-echo "Task deployed: " $new_revision_arn to $service_arn
+# Get existing ECS task definition
+existing_taskdef="$(aws ecs describe-task-definition \
+  --task-definition ers-task-definition \
+  --region "$AWS_REGION")"
 
-# Update the SSM Parameter Store with the new image version
+echo "Existing task definition retrieved successfully"
+
+# Create new task definition with new image
+new_task_definition=$(jq \
+  --arg IMAGE "$new_image" \
+  '.taskDefinition
+   | .containerDefinitions[0].image = $IMAGE
+   | del(.taskDefinitionArn)
+   | del(.revision)
+   | del(.status)
+   | del(.requiresAttributes)
+   | del(.compatibilities)
+   | del(.registeredAt)
+   | del(.registeredBy)' \
+  <<< "$existing_taskdef")
+
+echo "$new_task_definition"
+
+# Register new task definition
+new_revision_arn="$(aws ecs register-task-definition \
+  --cli-input-json "$new_task_definition" \
+  --region "$AWS_REGION" \
+  --output text \
+  --query 'taskDefinition.taskDefinitionArn')"
+
+echo "New Task Definition ARN: $new_revision_arn"
+
+# ECS cluster/service
+cluster_name="dlx-genai-ers-cluster-<+pipeline.variables.environment>"
+service_name="ers_ecs_service"
+
+echo "Cluster: $cluster_name"
+echo "Service: $service_name"
+
+# Update ECS service
+aws ecs update-service \
+  --cluster "$cluster_name" \
+  --service "$service_name" \
+  --task-definition "$new_revision_arn" \
+  --force-new-deployment \
+  --region "$AWS_REGION"
+
+echo "Task deployed: $new_revision_arn"
+
+# Update SSM Parameter Store
 ssm_param_name="/mdm-ers-service/image_version"
-echo "Updating SSM Parameter: $ssm_param_name with value: $new_image"
-aws ssm put-parameter --name "$ssm_param_name" --value "$new_image" --type "String" --overwrite
+
+echo "Updating SSM Parameter: $ssm_param_name"
+echo "Value: $new_image"
+
+aws ssm put-parameter \
+  --name "$ssm_param_name" \
+  --value "$new_image" \
+  --type "String" \
+  --overwrite \
+  --region "$AWS_REGION"
+
 echo "SSM Parameter updated successfully"
