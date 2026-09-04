@@ -1,140 +1,45 @@
-<!DOCTYPE html>
+locals {
 
-<html lang="en">
+  env = read_terragrunt_config("env.hcl")
 
-<head>
+}
 
-    <meta charset="UTF-8">
 
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+terraform {
 
-    <title>404 - Endpoint Offline</title>
+  source = "git::ssh://git@bitbucket.org/<YOUR-ORG>/terraform-stack-offline-page.git//.?ref=v1.0.0"
 
-    <style>
+}
 
-        * {
-            box-sizing: border-box;
-        }
 
-        body {
+include "root" {
 
-            margin: 0;
+  path = find_in_parent_folders("root.hcl")
 
-            min-height: 100vh;
+}
 
-            display: flex;
 
-            align-items: center;
+inputs = {
 
-            justify-content: center;
+  name = local.env.locals.name
 
-            font-family:
-                Arial,
-                Helvetica,
-                sans-serif;
+  environment = local.env.locals.environment
 
-            background: #f5f6f8;
+  aws_region = local.env.locals.aws_region
 
-            color: #252a30;
-        }
+  bucket_name = local.env.locals.bucket_name
 
-        .container {
+  domain_name = local.env.locals.domain_name
 
-            width: 90%;
+  public_route53_zone_id =
+    local.env.locals.public_route53_zone_id
 
-            max-width: 600px;
+  private_route53_zone_id =
+    local.env.locals.private_route53_zone_id
 
-            text-align: center;
+  acm_certificate_arn =
+    local.env.locals.acm_certificate_arn
 
-            background: #ffffff;
+  tags = local.env.locals.tags
 
-            padding: 55px 40px;
-
-            border-radius: 12px;
-
-            box-shadow:
-                0 5px 25px rgba(0, 0, 0, 0.08);
-        }
-
-        .error {
-
-            font-size: 86px;
-
-            font-weight: 700;
-
-            margin: 0;
-
-            letter-spacing: 2px;
-        }
-
-        h2 {
-
-            margin: 10px 0 20px;
-
-            font-size: 30px;
-        }
-
-        p {
-
-            margin: 10px 0;
-
-            font-size: 17px;
-
-            line-height: 1.6;
-
-            color: #666;
-        }
-
-        .message {
-
-            margin-top: 25px;
-        }
-
-        .footer {
-
-            margin-top: 30px;
-
-            font-size: 13px;
-
-            color: #999;
-        }
-
-    </style>
-
-</head>
-
-<body>
-
-    <div class="container">
-
-        <div class="error">
-            404
-        </div>
-
-        <h2>
-            Endpoint Offline
-        </h2>
-
-        <div class="message">
-
-            <p>
-                The requested endpoint is currently unavailable
-                because the DR endpoint is offline.
-            </p>
-
-            <p>
-                Please try again later.
-            </p>
-
-        </div>
-
-        <div class="footer">
-            DR Environment
-        </div>
-
-    </div>
-
-</body>
-
-</html>
+}
