@@ -1,41 +1,140 @@
-output "offline_url" {
-  description = "Offline URL"
+<!DOCTYPE html>
 
-  value = "https://${var.domain_name}"
-}
+<html lang="en">
 
-output "s3_bucket_name" {
-  description = "S3 bucket name"
+<head>
 
-  value = aws_s3_bucket.offline.id
-}
+    <meta charset="UTF-8">
 
-output "s3_bucket_arn" {
-  description = "S3 bucket ARN"
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
 
-  value = aws_s3_bucket.offline.arn
-}
+    <title>404 - Endpoint Offline</title>
 
-output "cloudfront_distribution_id" {
-  description = "CloudFront distribution ID"
+    <style>
 
-  value = aws_cloudfront_distribution.offline.id
-}
+        * {
+            box-sizing: border-box;
+        }
 
-output "cloudfront_domain_name" {
-  description = "CloudFront domain name"
+        body {
 
-  value = aws_cloudfront_distribution.offline.domain_name
-}
+            margin: 0;
 
-output "public_dns_name" {
-  description = "Public Route53 record"
+            min-height: 100vh;
 
-  value = aws_route53_record.offline_public.name
-}
+            display: flex;
 
-output "private_dns_name" {
-  description = "Private Route53 record"
+            align-items: center;
 
-  value = aws_route53_record.offline_private.name
-}
+            justify-content: center;
+
+            font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            background: #f5f6f8;
+
+            color: #252a30;
+        }
+
+        .container {
+
+            width: 90%;
+
+            max-width: 600px;
+
+            text-align: center;
+
+            background: #ffffff;
+
+            padding: 55px 40px;
+
+            border-radius: 12px;
+
+            box-shadow:
+                0 5px 25px rgba(0, 0, 0, 0.08);
+        }
+
+        .error {
+
+            font-size: 86px;
+
+            font-weight: 700;
+
+            margin: 0;
+
+            letter-spacing: 2px;
+        }
+
+        h2 {
+
+            margin: 10px 0 20px;
+
+            font-size: 30px;
+        }
+
+        p {
+
+            margin: 10px 0;
+
+            font-size: 17px;
+
+            line-height: 1.6;
+
+            color: #666;
+        }
+
+        .message {
+
+            margin-top: 25px;
+        }
+
+        .footer {
+
+            margin-top: 30px;
+
+            font-size: 13px;
+
+            color: #999;
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <div class="container">
+
+        <div class="error">
+            404
+        </div>
+
+        <h2>
+            Endpoint Offline
+        </h2>
+
+        <div class="message">
+
+            <p>
+                The requested endpoint is currently unavailable
+                because the DR endpoint is offline.
+            </p>
+
+            <p>
+                Please try again later.
+            </p>
+
+        </div>
+
+        <div class="footer">
+            DR Environment
+        </div>
+
+    </div>
+
+</body>
+
+</html>
