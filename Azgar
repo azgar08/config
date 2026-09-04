@@ -1,8 +1,35 @@
-dependency "route53_raas" {
-  config_path = "../raas"
-}
+$ terragrunt init
 
+Initializing the backend...
 
-dependency.route53_raas.outputs.zone_ids.internal
-dependency.route53_raas.outputs.zone_ids.private
-dependency.route53_raas.outputs.dns_name
+Successfully configured the backend "s3"! Terraform will automatically
+use this backend unless the backend configuration changes.
+Terraform encountered problems during initialisation, including problems
+with the configuration, described below.
+
+The Terraform configuration must be valid before initialization so that
+Terraform can determine which modules and providers need to be installed.
+╷
+│ Error: Invalid expression
+│
+│   on offline.tf line 93, in resource "aws_cloudfront_distribution" "offline":
+│   93:     origin_access_control_id =
+│   94:       aws_cloudfront_origin_access_control.offline.id
+│
+│ Expected the start of an expression, but found an invalid expression token.
+╵
+
+╷
+│ Error: Argument or block definition required
+│
+│   on offline.tf line 94, in resource "aws_cloudfront_distribution" "offline":
+│   94:       aws_cloudfront_origin_access_control.offline.id
+│
+│ An argument or block definition is required here. To set an argument, use
+│ the equals sign "=" to introduce the argument value.
+╵
+
+time=2026-09-05T01:49:42+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
+time=2026-09-05T01:49:42+05:30 level=error msg=1 error occurred:
+        * [C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA] exit status 1
+
