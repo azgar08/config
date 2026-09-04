@@ -1,50 +1,8 @@
-t469203@TXD90089 MINGW64 ~/Desktop/offline/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/route53/raas (dev-east-1)
-$ terragrunt output -json
-{
-  "dns_name": {
-    "sensitive": false,
-    "type": "string",
-    "value": "dev.raas.deluxe.com"
-  },
-  "nameservers": {
-    "sensitive": false,
-    "type": [
-      "list",
-      "string"
-    ],
-    "value": [
-      "ns-1458.awsdns-54.org",
-      "ns-1745.awsdns-26.co.uk",
-      "ns-209.awsdns-26.com",
-      "ns-633.awsdns-15.net"
-    ]
-  },
-  "zone_arn": {
-    "sensitive": false,
-    "type": [
-      "object",
-      {
-        "internal": "string",
-        "private": "string"
-      }
-    ],
-    "value": {
-      "internal": "arn:aws:route53:::hostedzone/Z0906268QCC6P0G4XX34",
-      "private": "arn:aws:route53:::hostedzone/Z05219231S44T9RHAUBCI"
-    }
-  },
-  "zone_ids": {
-    "sensitive": false,
-    "type": [
-      "object",
-      {
-        "internal": "string",
-        "private": "string"
-      }
-    ],
-    "value": {
-      "internal": "Z0906268QCC6P0G4XX34",
-      "private": "Z05219231S44T9RHAUBCI"
-    }
-  }
+dependency "route53_raas" {
+  config_path = "../raas"
 }
+
+
+dependency.route53_raas.outputs.zone_ids.internal
+dependency.route53_raas.outputs.zone_ids.private
+dependency.route53_raas.outputs.dns_name
