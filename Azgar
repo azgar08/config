@@ -1,15 +1,40 @@
-$ aws acm list-certificates \
-  --region us-east-1 \
-  --query 'CertificateSummaryList[].{Domain:DomainName,ARN:CertificateArn}' \
-  --output table
--------------------------------------------------------------------------------------------------------------------------------
-|                                                      ListCertificates                                                       |
-+--------------------------------------------------------------------------------------+--------------------------------------+
-|                                          ARN                                         |               Domain                 |
-+--------------------------------------------------------------------------------------+--------------------------------------+
-|  arn:aws:acm:us-east-1:518383396166:certificate/9e49899d-4545-4ec7-ab00-5911fcea177b |  extract-layout. raas.deluxe.com     |
-|  arn:aws:acm:us-east-1:518383396166:certificate/21951bc9-e965-4c9c-a7cc-81418377b332 |  rc.raas.deluxe.com                  |
-|  arn:aws:acm:us-east-1:518383396166:certificate/9ab43c95-a855-4e69-b658-fd2935d62ec6 |  awsr360rc22.r360v2-rc.deluxe.com    |
-|  arn:aws:acm:us-east-1:518383396166:certificate/f6c00907-a9df-4117-afb9-db3155546725 |  awsr360uat22.r360v2-uat.deluxe.com  |
-|  arn:aws:acm:us-east-1:518383396166:certificate/a864f305-b30a-45da-b586-242605b13519 |  raamsigning                         |
-|  arn:aws:acm:us-east-1:518383396166:certificate/6b81bf09-102d-496b-b2f6-abd3160f2509 |  rc.raas.deluxe.com      
+
+Changes to Outputs:
+  + cloudfront_distribution_id = (known after apply)
+  + cloudfront_domain_name     = (known after apply)
+  + offline_url                = "https://offline.rc.raas.deluxe.com"
+  + private_dns_name           = "rc.raas.deluxe.com"
+  + public_dns_name            = "rc.raas.deluxe.com"
+  + s3_bucket_arn              = (known after apply)
+  + s3_bucket_name             = (known after apply)
+
+Do you want to perform these actions?
+  Terraform will perform the actions described above.
+  Only 'yes' will be accepted to approve.
+
+  Enter a value: yes
+
+aws_cloudfront_origin_access_control.offline: Creating...
+aws_s3_bucket.offline: Creating...
+aws_cloudfront_origin_access_control.offline: Creation complete after 1s [id=E3QR7R3XPJA02O]
+aws_s3_bucket.offline: Creation complete after 5s [id=dlx-r360plus-offline-page-dr]
+aws_s3_object.offline_page: Creating...
+aws_cloudfront_distribution.offline: Creating...
+aws_s3_bucket_server_side_encryption_configuration.offline: Creating...
+aws_s3_bucket_public_access_block.offline: Creating...
+aws_s3_object.offline_page: Creation complete after 1s [id=dlx-r360plus-offline-page-dr/offline.html]
+aws_s3_bucket_public_access_block.offline: Creation complete after 1s [id=dlx-r360plus-offline-page-dr]
+aws_s3_bucket_server_side_encryption_configuration.offline: Creation complete after 2s [id=dlx-r360plus-offline-page-dr]
+╷
+│ Error: creating CloudFront Distribution: operation error CloudFront: CreateDistributionWithTags, https response error StatusCode: 404, RequestID: 7b34d454-0ac0-47d3-97f1-a83fb8baed85, NoSuchCachePolicy: The specified cache policy does not exist.
+│
+│   with aws_cloudfront_distribution.offline,
+│   on offline.tf line 67, in resource "aws_cloudfront_distribution" "offline":
+│   67: resource "aws_cloudfront_distribution" "offline" {
+│
+╵
+Releasing state lock. This may take a few moments...
+time=2026-09-05T02:47:07+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
+time=2026-09-05T02:47:07+05:30 level=error msg=1 error occurred:
+        * [C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA] exit status 1
+
