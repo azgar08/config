@@ -1,4 +1,15 @@
-aws acm list-certificates \
+$ aws acm list-certificates \
   --region us-east-1 \
   --query 'CertificateSummaryList[].{Domain:DomainName,ARN:CertificateArn}' \
   --output table
+-------------------------------------------------------------------------------------------------------------------------------
+|                                                      ListCertificates                                                       |
++--------------------------------------------------------------------------------------+--------------------------------------+
+|                                          ARN                                         |               Domain                 |
++--------------------------------------------------------------------------------------+--------------------------------------+
+|  arn:aws:acm:us-east-1:518383396166:certificate/9e49899d-4545-4ec7-ab00-5911fcea177b |  extract-layout. raas.deluxe.com     |
+|  arn:aws:acm:us-east-1:518383396166:certificate/21951bc9-e965-4c9c-a7cc-81418377b332 |  rc.raas.deluxe.com                  |
+|  arn:aws:acm:us-east-1:518383396166:certificate/9ab43c95-a855-4e69-b658-fd2935d62ec6 |  awsr360rc22.r360v2-rc.deluxe.com    |
+|  arn:aws:acm:us-east-1:518383396166:certificate/f6c00907-a9df-4117-afb9-db3155546725 |  awsr360uat22.r360v2-uat.deluxe.com  |
+|  arn:aws:acm:us-east-1:518383396166:certificate/a864f305-b30a-45da-b586-242605b13519 |  raamsigning                         |
+|  arn:aws:acm:us-east-1:518383396166:certificate/6b81bf09-102d-496b-b2f6-abd3160f2509 |  rc.raas.deluxe.com      
