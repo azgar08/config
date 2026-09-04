@@ -1,4 +1,4 @@
-output "debug_acm_certificate_arn" {
-  value     = var.acm_certificate_arn
-  sensitive = false
-}
+aws acm list-certificates \
+  --region us-east-1 \
+  --query 'CertificateSummaryList[].{Domain:DomainName,ARN:CertificateArn}' \
+  --output table
