@@ -1,40 +1,29 @@
+default_cache_behavior {
+  target_origin_id = "offline-s3"
 
-Changes to Outputs:
-  + cloudfront_distribution_id = (known after apply)
-  + cloudfront_domain_name     = (known after apply)
-  + offline_url                = "https://offline.rc.raas.deluxe.com"
-  + private_dns_name           = "rc.raas.deluxe.com"
-  + public_dns_name            = "rc.raas.deluxe.com"
-  + s3_bucket_arn              = (known after apply)
-  + s3_bucket_name             = (known after apply)
+  viewer_protocol_policy = "redirect-to-https"
 
-Do you want to perform these actions?
-  Terraform will perform the actions described above.
-  Only 'yes' will be accepted to approve.
+  allowed_methods = [
+    "GET",
+    "HEAD"
+  ]
 
-  Enter a value: yes
+  cached_methods = [
+    "GET",
+    "HEAD"
+  ]
 
-aws_cloudfront_origin_access_control.offline: Creating...
-aws_s3_bucket.offline: Creating...
-aws_cloudfront_origin_access_control.offline: Creation complete after 1s [id=E3QR7R3XPJA02O]
-aws_s3_bucket.offline: Creation complete after 5s [id=dlx-r360plus-offline-page-dr]
-aws_s3_object.offline_page: Creating...
-aws_cloudfront_distribution.offline: Creating...
-aws_s3_bucket_server_side_encryption_configuration.offline: Creating...
-aws_s3_bucket_public_access_block.offline: Creating...
-aws_s3_object.offline_page: Creation complete after 1s [id=dlx-r360plus-offline-page-dr/offline.html]
-aws_s3_bucket_public_access_block.offline: Creation complete after 1s [id=dlx-r360plus-offline-page-dr]
-aws_s3_bucket_server_side_encryption_configuration.offline: Creation complete after 2s [id=dlx-r360plus-offline-page-dr]
-╷
-│ Error: creating CloudFront Distribution: operation error CloudFront: CreateDistributionWithTags, https response error StatusCode: 404, RequestID: 7b34d454-0ac0-47d3-97f1-a83fb8baed85, NoSuchCachePolicy: The specified cache policy does not exist.
-│
-│   with aws_cloudfront_distribution.offline,
-│   on offline.tf line 67, in resource "aws_cloudfront_distribution" "offline":
-│   67: resource "aws_cloudfront_distribution" "offline" {
-│
-╵
-Releasing state lock. This may take a few moments...
-time=2026-09-05T02:47:07+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
-time=2026-09-05T02:47:07+05:30 level=error msg=1 error occurred:
-        * [C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA] exit status 1
+  forwarded_values {
+    query_string = false
 
+    cookies {
+      forward = "none"
+    }
+  }
+
+  min_ttl     = 0
+  default_ttl = 300
+  max_ttl     = 3600
+
+  compress = true
+}
