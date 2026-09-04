@@ -1,6 +1,5 @@
-aws_cloudfront_distribution.offline: Creating...
 ╷
-│ Error: creating CloudFront Distribution: operation error CloudFront: CreateDistributionWithTags, https response error StatusCode: 400, RequestID: f7fab3a5-3cfb-4e22-a315-c5c9b5b2d63e, InvalidArgument: The parameter CNAME contains one or more parameters that are not valid.
+│ Error: creating CloudFront Distribution: operation error CloudFront: CreateDistributionWithTags, https response error StatusCode: 400, RequestID: 98ab6616-ec79-44c1-9305-9fe09822a211, InvalidViewerCertificate: The certificate that is attached to your distribution doesn't cover the alternate domain name (CNAME) that you're trying to add. For more details, see: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/CNAMEs.html#alternate-domain-names-requirements
 │
 │   with aws_cloudfront_distribution.offline,
 │   on offline.tf line 67, in resource "aws_cloudfront_distribution" "offline":
@@ -8,7 +7,6 @@ aws_cloudfront_distribution.offline: Creating...
 │
 ╵
 Releasing state lock. This may take a few moments...
-time=2026-09-05T02:59:02+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
-time=2026-09-05T02:59:02+05:30 level=error msg=1 error occurred:
+time=2026-09-05T03:06:08+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
+time=2026-09-05T03:06:08+05:30 level=error msg=1 error occurred:
         * [C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA] exit status 1
-
