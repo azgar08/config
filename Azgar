@@ -1,45 +1,78 @@
 locals {
 
-  env = read_terragrunt_config("env.hcl")
+  # ======================================================
+  # ENVIRONMENT
+  # ======================================================
 
-}
-
-
-terraform {
-
-  source = "git::ssh://git@bitbucket.org/<YOUR-ORG>/terraform-stack-offline-page.git//.?ref=v1.0.0"
-
-}
+  environment = "dr"
 
 
-include "root" {
+  # ======================================================
+  # WEST / DR REGION
+  # ======================================================
 
-  path = find_in_parent_folders("root.hcl")
-
-}
+  aws_region = "us-west-2"
 
 
-inputs = {
+  # ======================================================
+  # STACK NAME
+  # ======================================================
 
-  name = local.env.locals.name
+  name = "dlx-offline"
 
-  environment = local.env.locals.environment
 
-  aws_region = local.env.locals.aws_region
+  # ======================================================
+  # S3
+  # ======================================================
 
-  bucket_name = local.env.locals.bucket_name
+  bucket_name = "dlx-offline-page-dr"
 
-  domain_name = local.env.locals.domain_name
 
-  public_route53_zone_id =
-    local.env.locals.public_route53_zone_id
+  # ======================================================
+  # OFFLINE DNS
+  # ======================================================
 
-  private_route53_zone_id =
-    local.env.locals.private_route53_zone_id
+  domain_name = "offline.example.com"
 
-  acm_certificate_arn =
-    local.env.locals.acm_certificate_arn
 
-  tags = local.env.locals.tags
+  # ======================================================
+  # PUBLIC ROUTE53
+  # ======================================================
 
+  public_route53_zone_id = "ZPUBLICXXXXXXXXXXXX"
+
+
+  # ======================================================
+  # PRIVATE ROUTE53
+  # ======================================================
+
+  private_route53_zone_id = "ZPRIVATEXXXXXXXXXXX"
+
+
+  # ======================================================
+  # EXISTING ACM CERTIFICATE
+  #
+  # Must cover offline.example.com
+  # Must be in us-east-1
+  # ======================================================
+
+  acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+
+  # ======================================================
+  # TAGS
+  # ======================================================
+
+  tags = {
+
+    Project = "Deluxe"
+
+    Environment = "DR"
+
+    Region = "West"
+
+    Application = "OfflinePage"
+
+    ManagedBy = "Terragrunt"
+  }
 }
