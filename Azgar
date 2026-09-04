@@ -1,35 +1,202 @@
-$ terragrunt init
+$ terragrunt plan
 
 Initializing the backend...
 
-Successfully configured the backend "s3"! Terraform will automatically
-use this backend unless the backend configuration changes.
-Terraform encountered problems during initialisation, including problems
-with the configuration, described below.
+Initializing provider plugins...
+- Reusing previous version of hashicorp/aws from the dependency lock file
+- Using previously-installed hashicorp/aws v6.63.0
 
-The Terraform configuration must be valid before initialization so that
-Terraform can determine which modules and providers need to be installed.
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
+Acquiring state lock. This may take a few moments...
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform planned the following actions, but then encountered a problem:
+
+  # aws_cloudfront_origin_access_control.offline will be created
+  + resource "aws_cloudfront_origin_access_control" "offline" {
+      + arn                               = (known after apply)
+      + description                       = "CloudFront OAC for offline S3 bucket"
+      + etag                              = (known after apply)
+      + id                                = (known after apply)
+      + name                              = "dlx-r360plus-offline-dr-oac"
+      + origin_access_control_origin_type = "s3"
+      + signing_behavior                  = "always"
+      + signing_protocol                  = "sigv4"
+    }
+
+  # aws_s3_bucket.offline will be created
+  + resource "aws_s3_bucket" "offline" {
+      + acceleration_status         = (known after apply)
+      + acl                         = (known after apply)
+      + arn                         = (known after apply)
+      + bucket                      = "dlx-r360plus-offline-page-dr"
+      + bucket_domain_name          = (known after apply)
+      + bucket_namespace            = (known after apply)
+      + bucket_prefix               = (known after apply)
+      + bucket_region               = (known after apply)
+      + bucket_regional_domain_name = (known after apply)
+      + force_destroy               = false
+      + hosted_zone_id              = (known after apply)
+      + id                          = (known after apply)
+      + object_lock_enabled         = (known after apply)
+      + policy                      = (known after apply)
+      + region                      = "us-west-2"
+      + request_payer               = (known after apply)
+      + tags                        = {
+          + "AccountId"      = "518383396166"
+          + "AppEnvironment" = "dr"
+          + "AppName"        = "RAAS"
+          + "Application"    = "RAAS"
+          + "AwsRegion"      = "us-west-2"
+          + "CostCenter"     = "105057.02.11IT"
+          + "DeploymentTeam" = "DevOps"
+          + "Environment"    = "RC"
+          + "PAMReady"       = "false"
+          + "PAMTemplate"    = "none"
+          + "TerraformPath"  = "../../NONPROD/us-west-2/DR/offline-web"
+        }
+      + tags_all                    = {
+          + "AccountId"      = "518383396166"
+          + "AppEnvironment" = "dr"
+          + "AppName"        = "RAAS"
+          + "Application"    = "RAAS"
+          + "AwsRegion"      = "us-west-2"
+          + "CostCenter"     = "105057.02.11IT"
+          + "DeploymentTeam" = "DevOps"
+          + "Environment"    = "RC"
+          + "PAMReady"       = "false"
+          + "PAMTemplate"    = "none"
+          + "TerraformPath"  = "../../NONPROD/us-west-2/DR/offline-web"
+        }
+      + website_domain              = (known after apply)
+      + website_endpoint            = (known after apply)
+    }
+
+  # aws_s3_bucket_public_access_block.offline will be created
+  + resource "aws_s3_bucket_public_access_block" "offline" {
+      + block_public_acls       = true
+      + block_public_policy     = true
+      + bucket                  = (known after apply)
+      + id                      = (known after apply)
+      + ignore_public_acls      = true
+      + region                  = "us-west-2"
+      + restrict_public_buckets = true
+    }
+
+  # aws_s3_bucket_server_side_encryption_configuration.offline will be created
+  + resource "aws_s3_bucket_server_side_encryption_configuration" "offline" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + region = "us-west-2"
+
+      + rule {
+          + blocked_encryption_types = (known after apply)
+          + bucket_key_enabled       = (known after apply)
+
+          + apply_server_side_encryption_by_default {
+              + kms_master_key_id = (known after apply)
+              + sse_algorithm     = "AES256"
+            }
+        }
+    }
+
+  # aws_s3_object.offline_page will be created
+  + resource "aws_s3_object" "offline_page" {
+      + acl                    = (known after apply)
+      + arn                    = (known after apply)
+      + bucket                 = (known after apply)
+      + bucket_key_enabled     = (known after apply)
+      + checksum_crc32         = (known after apply)
+      + checksum_crc32c        = (known after apply)
+      + checksum_crc64nvme     = (known after apply)
+      + checksum_sha1          = (known after apply)
+      + checksum_sha256        = (known after apply)
+      + content_type           = "text/html"
+      + etag                   = "f058121beb59c5155358477dde3c47c0"
+      + force_destroy          = false
+      + id                     = (known after apply)
+      + key                    = "offline.html"
+      + kms_key_id             = (known after apply)
+      + region                 = "us-west-2"
+      + server_side_encryption = (known after apply)
+      + source                 = "./website/offline.html"
+      + storage_class          = (known after apply)
+      + tags_all               = (known after apply)
+      + version_id             = (known after apply)
+    }
+
+Plan: 5 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + offline_url    = "https://rc.raas.deluxe.com"
+  + s3_bucket_arn  = (known after apply)
+  + s3_bucket_name = (known after apply)
 ╷
-│ Error: Invalid expression
+│ Error: "viewer_certificate.0.acm_certificate_arn" ( ) is an invalid ARN: arn: invalid prefix
 │
-│   on offline.tf line 93, in resource "aws_cloudfront_distribution" "offline":
-│   93:     origin_access_control_id =
-│   94:       aws_cloudfront_origin_access_control.offline.id
+│   with aws_cloudfront_distribution.offline,
+│   on offline.tf line 148, in resource "aws_cloudfront_distribution" "offline":
+│  148:     acm_certificate_arn = var.acm_certificate_arn
 │
-│ Expected the start of an expression, but found an invalid expression token.
 ╵
-
-╷
-│ Error: Argument or block definition required
-│
-│   on offline.tf line 94, in resource "aws_cloudfront_distribution" "offline":
-│   94:       aws_cloudfront_origin_access_control.offline.id
-│
-│ An argument or block definition is required here. To set an argument, use
-│ the equals sign "=" to introduce the argument value.
-╵
-
-time=2026-09-05T01:49:42+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
-time=2026-09-05T01:49:42+05:30 level=error msg=1 error occurred:
+Releasing state lock. This may take a few moments...
+time=2026-09-05T02:12:44+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
+time=2026-09-05T02:12:44+05:30 level=error msg=1 error occurred:
         * [C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA] exit status 1
 
+
+
+t469203@TXD90089 MINGW64 ~/Desktop/offline/infrastructure.raas.terraform.live/NONPROD/us-west-2/DR/offline-web (dev-east-1)
+$ 3_object" "offline_page" {
+      + acl                    = (known after apply)
+      + arn                    = (known after apply)
+      + bucket                 = (known after apply)
+      + bucket_key_enabled     = (known after apply)
+      + checksum_crc32         = (known after apply)
+      + checksum_crc32c        = (known after apply)
+      + checksum_crc64nvme     = (known after apply)
+      + checksum_sha1          = (known after apply)
+      + checksum_sha256        = (known after apply)
+      + content_type           = "text/html"
+      + etag                   = "f058121beb59c5155358477dde3c47c0"
+      + force_destroy          = false
+      + id                     = (known after apply)
+      + key                    = "offline.html"
+      + kms_key_id             = (known after apply)
+      + region                 = "us-west-2"
+      + server_side_encryption = (known after apply)
+      + source                 = "./website/offline.html"
+      + storage_class          = (known after apply)
+      + tags_all               = (known after apply)
+      + version_id             = (known after apply)
+    }
+
+Plan: 5 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + offline_url    = "https://rc.raas.deluxe.com"
+  + s3_bucket_arn  = (known after apply)
+  + s3_bucket_name = (known after apply)
+╷
+│ Error: "viewer_certificate.0.acm_certificate_arn" ( ) is an invalid ARN: arn: invalid prefix
+│
+│   with aws_cloudfront_distribution.offline,
+│   on offline.tf line 148, in resource "aws_cloudfront_distribution" "offline":
+│  148:     acm_certificate_arn = var.acm_certificate_arn
+│
+╵
+Releasing state lock. This may take a few moments...
+time=2026-09-05T02:12:44+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
+time=2026-09-05T02:12:44+05:30 level=error msg=1 error occurred:
+        * [C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA] exit status 1
