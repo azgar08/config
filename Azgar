@@ -1,118 +1,45 @@
-# Assume the TF Role
-case <+pipeline.variables.env_delegate> in
-    dev-env-terragrunt-delegate)
-        aws_credentials_json=$(aws sts assume-role \
-          --role-arn arn:aws:iam::<+pipeline.variables.GENAI_Dev_Account>:role/Terraform-Admin-Role \
-          --role-session-name DEVSession)
-        aws_account_no=590184044598
-        ;;
+variable "name" {
+  description = "Name of the offline stack"
+  type        = string
+}
 
-    nonprod-env-terragrunt-delegate)
-        aws_credentials_json=$(aws sts assume-role \
-          --role-arn arn:aws:iam::<+pipeline.variables.GENAI_NonProd_Account>:role/Terraform-Admin-Role \
-          --role-session-name NONPRODSession)
-        aws_account_no=339713162037
-        ;;
+variable "environment" {
+  description = "Environment name"
+  type        = string
+}
 
-    prod-env-terragrunt-delegate)
-        aws_credentials_json=$(aws sts assume-role \
-          --role-arn arn:aws:iam::<+pipeline.variables.GENAI_Prod_Account>:role/Terraform-Admin-Role \
-          --role-session-name PRODSession)
-        aws_account_no=471112595495
-        ;;
+variable "aws_region" {
+  description = "DR/West AWS region"
+  type        = string
+}
 
-    *)
-        echo "Unable to assume role!"
-        exit 1
-        ;;
-esac
+variable "bucket_name" {
+  description = "S3 bucket name"
+  type        = string
+}
 
-export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq --exit-status --raw-output .Credentials.AccessKeyId)
-export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq --exit-status --raw-output .Credentials.SessionToken)
+variable "domain_name" {
+  description = "Offline DNS name"
+  type        = string
+}
 
-# Explicit AWS Region
-export AWS_REGION="us-east-1"
-export AWS_DEFAULT_REGION="us-east-1"
+variable "public_route53_zone_id" {
+  description = "Public Route53 hosted zone ID"
+  type        = string
+}
 
-echo "AWS Region: $AWS_REGION"
-echo "AWS Account: $aws_account_no"
+variable "private_route53_zone_id" {
+  description = "Private Route53 hosted zone ID"
+  type        = string
+}
 
-# AWS caller identity
-aws sts get-caller-identity
+variable "acm_certificate_arn" {
+  description = "Existing ACM certificate ARN in us-east-1"
+  type        = string
+}
 
-# Check S3
-aws s3 ls --region "$AWS_REGION"
-
-# Get image information
-export ImageTag=<+pipeline.stages.Build.spec.execution.steps.Docker_push_and_scan.steps.Build_and_Docker_Push.artifact_Docker_push_and_scan_Build_and_Docker_Push.stepArtifacts.publishedImageArtifacts[1].tag>
-
-export ImageName=<+pipeline.stages.Build.spec.execution.steps.Docker_push_and_scan.steps.Build_and_Docker_Push.artifact_Docker_push_and_scan_Build_and_Docker_Push.stepArtifacts.publishedImageArtifacts[1].imageName>
-
-export new_image="$ImageName:$ImageTag"
-
-echo "Image: $new_image"
-
-# Get existing ECS task definition
-existing_taskdef="$(aws ecs describe-task-definition \
-  --task-definition ers-task-definition \
-  --region "$AWS_REGION")"
-
-echo "Existing task definition retrieved successfully"
-
-# Create new task definition with new image
-new_task_definition=$(jq \
-  --arg IMAGE "$new_image" \
-  '.taskDefinition
-   | .containerDefinitions[0].image = $IMAGE
-   | del(.taskDefinitionArn)
-   | del(.revision)
-   | del(.status)
-   | del(.requiresAttributes)
-   | del(.compatibilities)
-   | del(.registeredAt)
-   | del(.registeredBy)' \
-  <<< "$existing_taskdef")
-
-echo "$new_task_definition"
-
-# Register new task definition
-new_revision_arn="$(aws ecs register-task-definition \
-  --cli-input-json "$new_task_definition" \
-  --region "$AWS_REGION" \
-  --output text \
-  --query 'taskDefinition.taskDefinitionArn')"
-
-echo "New Task Definition ARN: $new_revision_arn"
-
-# ECS cluster/service
-cluster_name="dlx-genai-ers-cluster-<+pipeline.variables.environment>"
-service_name="ers_ecs_service"
-
-echo "Cluster: $cluster_name"
-echo "Service: $service_name"
-
-# Update ECS service
-aws ecs update-service \
-  --cluster "$cluster_name" \
-  --service "$service_name" \
-  --task-definition "$new_revision_arn" \
-  --force-new-deployment \
-  --region "$AWS_REGION"
-
-echo "Task deployed: $new_revision_arn"
-
-# Update SSM Parameter Store
-ssm_param_name="/mdm-ers-service/image_version"
-
-echo "Updating SSM Parameter: $ssm_param_name"
-echo "Value: $new_image"
-
-aws ssm put-parameter \
-  --name "$ssm_param_name" \
-  --value "$new_image" \
-  --type "String" \
-  --overwrite \
-  --region "$AWS_REGION"
-
-echo "SSM Parameter updated successfully"
+variable "tags" {
+  description = "Resource tags"
+  type        = map(string)
+  default     = {}
+}
