@@ -1,7 +1,290 @@
-OpenTofu will REMOVE
-arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-r360plus-us-west-2-microservice-rds-secret-prod-*
-arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-r360plus-us-west-2-microservice-rds-secret-dr-*
-arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-raas-dl-rds-conf-db-config-prod-*
-OpenTofu will ADD
-arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-r360plus-us-west-2-microservice-rds-secret-dr-Si5L2Z
-arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-raas-dl-rds-conf-db-config-dr-Pt0FnL
+Executing command ...
+TENV_AUTO_INSTALL
+{
+    "UserId": "AROA5HIZUSJ74WNWNOOTO:PRODSession",
+    "Account": "908976231039",
+    "Arn": "arn:aws:sts::908976231039:assumed-role/Terraform-Admin-Role/PRODSession"
+}
+Cloning into 'infrastructure.raas.terraform.live'...
+Already on 'dev-east-1'
+Your branch is up to date with 'origin/dev-east-1'.
+* dev-east-1
+
+Initializing the backend...
+
+Successfully configured the backend "s3"! OpenTofu will automatically
+use this backend unless the backend configuration changes.
+Initializing modules...
+Downloading git::ssh://git@bitbucket.org/deluxe-development/aws-lambda.git?ref=1.0.8 for aws_lambda...
+- aws_lambda in .terraform/modules/aws_lambda
+Downloading registry.opentofu.org/terraform-aws-modules/lambda/aws 7.21.1 for aws_lambda.lambda_function...
+- aws_lambda.lambda_function in .terraform/modules/aws_lambda.lambda_function
+Downloading git::ssh://git@bitbucket.org/deluxe-development/aws-iam-role-with-policy.git?ref=1.6.0 for iam_role...
+- iam_role in .terraform/modules/iam_role
+Downloading registry.opentofu.org/terraform-aws-modules/iam/aws 4.24.1 for iam_role.iam_policy...
+- iam_role.iam_policy in .terraform/modules/iam_role.iam_policy/modules/iam-policy
+Downloading registry.opentofu.org/terraform-aws-modules/iam/aws 4.24.1 for iam_role.iam_role...
+- iam_role.iam_role in .terraform/modules/iam_role.iam_role/modules/iam-assumable-role
+Downloading registry.opentofu.org/terraform-aws-modules/iam/aws 4.24.1 for iam_role.iam_role_oidc...
+- iam_role.iam_role_oidc in .terraform/modules/iam_role.iam_role_oidc/modules/iam-assumable-role-with-oidc
+
+Initializing provider plugins...
+- Finding hashicorp/random versions matching ">= 2.0.0"...
+- Finding hashicorp/external versions matching ">= 1.0.0"...
+- Finding hashicorp/local versions matching ">= 1.0.0"...
+- Finding hashicorp/null versions matching ">= 2.0.0"...
+- Finding hashicorp/aws versions matching ">= 2.23.0, >= 3.34.0, >= 3.35.0, >= 5.79.0"...
+- Installing hashicorp/null v3.3.1...
+- Installed hashicorp/null v3.3.1 (signed, key ID 0C0AF313E5FD9F80)
+- Installing hashicorp/aws v6.63.0...
+- Installed hashicorp/aws v6.63.0 (signed, key ID 0C0AF313E5FD9F80)
+- Installing hashicorp/random v3.9.0...
+- Installed hashicorp/random v3.9.0 (signed, key ID 0C0AF313E5FD9F80)
+- Installing hashicorp/external v2.4.1...
+- Installed hashicorp/external v2.4.1 (signed, key ID 0C0AF313E5FD9F80)
+- Installing hashicorp/local v2.9.0...
+- Installed hashicorp/local v2.9.0 (signed, key ID 0C0AF313E5FD9F80)
+
+Providers are signed by their developers.
+If you'd like to know more about provider signing, you can read about it here:
+https://opentofu.org/docs/cli/plugins/signing/
+
+OpenTofu has created a lock file .terraform.lock.hcl to record the provider
+selections it made above. Include this file in your version control repository
+so that OpenTofu can guarantee to make the same selections by default when
+you run "tofu init" in the future.
+
+OpenTofu has been successfully initialized!
+
+You may now begin working with OpenTofu. Try running "tofu plan" to see
+any changes that are required for your infrastructure. All OpenTofu commands
+should now work.
+
+If you ever set or change modules or backend configuration for OpenTofu,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
+module.iam_role.module.iam_role[0].data.aws_iam_policy_document.assume_role[0]: Reading...
+module.iam_role.module.iam_policy[0].aws_iam_policy.policy[0]: Refreshing state... [id=arn:aws:iam::908976231039:policy/dlx-raas-dl-fpf-scheduling-lambda-dr-policy]
+module.iam_role.module.iam_role[0].data.aws_iam_policy_document.assume_role[0]: Read complete after 0s [id=3172595430]
+module.iam_role.module.iam_role[0].aws_iam_role.this[0]: Refreshing state... [id=dlx-raas-dl-fpf-scheduling-lambda-dr-role]
+module.iam_role.module.iam_role[0].aws_iam_role_policy_attachment.custom[1]: Refreshing state... [id=dlx-raas-dl-fpf-scheduling-lambda-dr-role/arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole]
+module.iam_role.module.iam_role[0].aws_iam_role_policy_attachment.custom[2]: Refreshing state... [id=dlx-raas-dl-fpf-scheduling-lambda-dr-role/arn:aws:iam::908976231039:policy/dlx-raas-dl-fpf-scheduling-lambda-dr-policy]
+module.iam_role.module.iam_role[0].aws_iam_role_policy_attachment.custom[0]: Refreshing state... [id=dlx-raas-dl-fpf-scheduling-lambda-dr-role/arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]
+module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].data.aws_caller_identity.current: Reading...
+module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].data.aws_partition.current: Reading...
+module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].data.aws_region.current: Reading...
+module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].data.aws_partition.current: Read complete after 0s [id=aws]
+module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].data.aws_region.current: Read complete after 0s [id=us-west-2]
+module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].aws_cloudwatch_log_group.lambda[0]: Refreshing state... [id=/aws/lambda/dlx-raas-dl-fpf-scheduling-lambda-dr]
+module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].data.aws_caller_identity.current: Read complete after 0s [id=908976231039]
+module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].aws_lambda_function.this[0]: Refreshing state... [id=dlx-raas-dl-fpf-scheduling-lambda-dr]
+
+Note: Objects have changed outside of OpenTofu
+
+OpenTofu detected the following changes made outside of OpenTofu since the
+last "tofu apply" which may have affected this plan:
+
+  # module.iam_role.module.iam_policy[0].aws_iam_policy.policy[0] has changed
+  ~ resource "aws_iam_policy" "policy" {
+        id               = "arn:aws:iam::908976231039:policy/dlx-raas-dl-fpf-scheduling-lambda-dr-policy"
+        name             = "dlx-raas-dl-fpf-scheduling-lambda-dr-policy"
+      ~ policy           = jsonencode(
+          ~ {
+              ~ Statement = [
+                    # (3 unchanged elements hidden)
+                    {
+                        Action   = [
+                            "secretsmanager:GetSecretValue",
+                            "secretsmanager:DescribeSecret",
+                        ]
+                        Effect   = "Allow"
+                        Resource = [
+                            "arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-r360plus-us-west-2-odic-client-secret-dr-vTeHFm",
+                            "arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-raas-dl-rds-conf-db-config-dr-*",
+                            "arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-raas-rds-etl-db-ssl-cert-*",
+                            "arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-r360plus-us-west-2-dynatrace-auth-token-dr-QN8kM1",
+                        ]
+                    },
+                  ~ {
+                      ~ Resource = [
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-raas-dl-open-invoice-processor-prod",
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-json-processor-prod",
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-xml-processor-prod",
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-ach-processor-prod",
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-dat-processor-prod",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-raas-dl-open-invoice-processor-dr",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-json-processor-dr",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-xml-processor-dr",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-ach-processor-dr",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-dat-processor-dr",
+                        ]
+                        # (2 unchanged attributes hidden)
+                    },
+                    {
+                        Action   = [
+                            "sns:Publish",
+                            "sns:ListSubscriptionsByTopic",
+                        ]
+                        Effect   = "Allow"
+                        Resource = [
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-delete-mesage-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-fpf-processing-ach-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-fpf-processing-xml-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-fpf-processing-json-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-fpf-processing-rps-dat-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-open-invoice-processor-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-monitoring-service-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-scheduling-us-west-2",
+                        ]
+                    },
+                ]
+                # (1 unchanged attribute hidden)
+            }
+        )
+        tags             = {
+            "AccountId"      = "908976231039"
+            "AppEnvironment" = "dr"
+            "AppName"        = "RAAS"
+            "Application"    = "RAAS"
+            "AwsRegion"      = "us-west-2"
+            "CostCenter"     = "105057.02.11IT"
+            "DeploymentTeam" = "DevOps"
+            "Environment"    = "Production"
+            "PAMReady"       = "false"
+            "PAMTemplate"    = "none"
+            "TerraformPath"  = "../../../PROD/us-west-2/DR/lambda-fpf-scheduling"
+        }
+        # (6 unchanged attributes hidden)
+    }
+
+
+Unless you have made equivalent changes to your configuration, or ignored the
+relevant attributes using ignore_changes, the following plan may include
+actions to undo or respond to these changes.
+
+─────────────────────────────────────────────────────────────────────────────
+
+OpenTofu used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  ~ update in-place
+
+OpenTofu planned the following actions, but then encountered a problem:
+
+  # module.iam_role.module.iam_policy[0].aws_iam_policy.policy[0] will be updated in-place
+  ~ resource "aws_iam_policy" "policy" {
+        id               = "arn:aws:iam::908976231039:policy/dlx-raas-dl-fpf-scheduling-lambda-dr-policy"
+        name             = "dlx-raas-dl-fpf-scheduling-lambda-dr-policy"
+      ~ policy           = jsonencode(
+          ~ {
+              ~ Statement = [
+                    # (3 unchanged elements hidden)
+                    {
+                        Action   = [
+                            "secretsmanager:GetSecretValue",
+                            "secretsmanager:DescribeSecret",
+                        ]
+                        Effect   = "Allow"
+                        Resource = [
+                            "arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-r360plus-us-west-2-odic-client-secret-dr-vTeHFm",
+                            "arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-raas-dl-rds-conf-db-config-dr-*",
+                            "arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-raas-rds-etl-db-ssl-cert-*",
+                            "arn:aws:secretsmanager:us-west-2:908976231039:secret:dlx-r360plus-us-west-2-dynatrace-auth-token-dr-QN8kM1",
+                        ]
+                    },
+                  ~ {
+                      ~ Resource = [
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-raas-dl-open-invoice-processor-dr",
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-json-processor-dr",
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-xml-processor-dr",
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-ach-processor-dr",
+                          - "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-dat-processor-dr",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-raas-dl-open-invoice-processor-prod",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-json-processor-prod",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-xml-processor-prod",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-ach-processor-prod",
+                          + "arn:aws:glue:us-west-2:908976231039:job/dlx-r360plus-fpf-generic-dat-processor-prod",
+                        ]
+                        # (2 unchanged attributes hidden)
+                    },
+                    {
+                        Action   = [
+                            "sns:Publish",
+                            "sns:ListSubscriptionsByTopic",
+                        ]
+                        Effect   = "Allow"
+                        Resource = [
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-delete-mesage-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-fpf-processing-ach-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-fpf-processing-xml-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-fpf-processing-json-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-fpf-processing-rps-dat-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-open-invoice-processor-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-monitoring-service-us-west-2",
+                            "arn:aws:sns:us-west-2:908976231039:raas-dr-scheduling-us-west-2",
+                        ]
+                    },
+                ]
+                # (1 unchanged attribute hidden)
+            }
+        )
+        tags             = {
+            "AccountId"      = "908976231039"
+            "AppEnvironment" = "dr"
+            "AppName"        = "RAAS"
+            "Application"    = "RAAS"
+            "AwsRegion"      = "us-west-2"
+            "CostCenter"     = "105057.02.11IT"
+            "DeploymentTeam" = "DevOps"
+            "Environment"    = "Production"
+            "PAMReady"       = "false"
+            "PAMTemplate"    = "none"
+            "TerraformPath"  = "../../../PROD/us-west-2/DR/lambda-fpf-scheduling"
+        }
+        # (6 unchanged attributes hidden)
+    }
+
+Plan: 0 to add, 1 to change, 0 to destroy.
+╷
+│ Warning: Deprecated attribute
+│ 
+│   on .terraform/modules/aws_lambda.lambda_function/outputs.tf line 9, in output "lambda_function_arn_static":
+│    9:   value       = local.create &amp;&amp; var.create_function &amp;&amp; !var.create_layer ? "arn:${data.aws_partition.current.partition}:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.function_name}" : ""
+│ 
+│ The attribute "name" is deprecated. Refer to the provider documentation for
+│ details.
+│ 
+│ (and one more similar warning elsewhere)
+╵
+╷
+│ Error: Invalid combination of arguments
+│ 
+│   with module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].aws_lambda_function.this[0],
+│   on .terraform/modules/aws_lambda.lambda_function/main.tf line 38, in resource "aws_lambda_function" "this":
+│   38:   image_uri                          = var.image_uri
+│ 
+│ "image_uri": one of `filename,image_uri,s3_bucket` must be specified
+╵
+╷
+│ Error: Invalid combination of arguments
+│ 
+│   with module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].aws_lambda_function.this[0],
+│   on .terraform/modules/aws_lambda.lambda_function/main.tf line 55, in resource "aws_lambda_function" "this":
+│   55:   filename         = local.filename
+│ 
+│ "filename": one of `filename,image_uri,s3_bucket` must be specified
+╵
+╷
+│ Error: Invalid combination of arguments
+│ 
+│   with module.aws_lambda.module.lambda_function["dlx-raas-dl-fpf-scheduling-lambda-dr"].aws_lambda_function.this[0],
+│   on .terraform/modules/aws_lambda.lambda_function/main.tf line 58, in resource "aws_lambda_function" "this":
+│   58:   s3_bucket         = local.s3_bucket
+│ 
+│ "s3_bucket": one of `filename,image_uri,s3_bucket` must be specified
+╵
+time=2026-09-04T07:22:43Z level=error msg=tofu invocation failed in /tmp/infrastructure.raas.terraform.live/PROD/us-west-2/DR/lambda-fpf-scheduling/.terragrunt-cache/ccIbSqIIsMni7HwLYn6LSxoe_H0/nzPcPsfLcXGMpWZ30GY93GqxqQ4/lambda prefix=[/tmp/infrastructure.raas.terraform.live/PROD/us-west-2/DR/lambda-fpf-scheduling] 
+time=2026-09-04T07:22:43Z level=error msg=1 error occurred:
+	* [/tmp/infrastructure.raas.terraform.live/PROD/us-west-2/DR/lambda-fpf-scheduling/.terragrunt-cache/ccIbSqIIsMni7HwLYn6LSxoe_H0/nzPcPsfLcXGMpWZ30GY93GqxqQ4/lambda] exit status 1
+
+
+CommandExecution failed with exit code: (1)
