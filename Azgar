@@ -1,12 +1,56 @@
-╷
-│ Error: creating CloudFront Distribution: operation error CloudFront: CreateDistributionWithTags, https response error StatusCode: 400, RequestID: 98ab6616-ec79-44c1-9305-9fe09822a211, InvalidViewerCertificate: The certificate that is attached to your distribution doesn't cover the alternate domain name (CNAME) that you're trying to add. For more details, see: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/CNAMEs.html#alternate-domain-names-requirements
-│
-│   with aws_cloudfront_distribution.offline,
-│   on offline.tf line 67, in resource "aws_cloudfront_distribution" "offline":
-│   67: resource "aws_cloudfront_distribution" "offline" {
-│
-╵
-Releasing state lock. This may take a few moments...
-time=2026-09-05T03:06:08+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA prefix=[C:\Users\t469203\Desktop\offline\infrastructure.raas.terraform.live\NONPROD\us-west-2\DR\offline-web]
-time=2026-09-05T03:06:08+05:30 level=error msg=1 error occurred:
-        * [C:/Users/T469203/.terragrunt-cache/eYMNoEgu_x6_3nn0anblZtBraZ0/RQwUDZJGq_3NHGbR_iqrNohYFLA] exit status 1
+                    {
+
+                        Action   = [
+
+                            "glue:StartJobRun",
+
+                            "glue:GetJobRun",
+
+                            "glue:GetJobRuns",
+
+                        ]
+
+                        Effect   = "Allow"
+
+                        Resource = [
+
+                            "*",
+
+                        ]
+
+                        Sid      = "AllowTriggerGlue"
+
+                    },
+
+                    # (1 unchanged element hidden)
+
+                ]
+
+                # (1 unchanged attribute hidden)
+
+            }
+
+        )
+
+        tags             = {
+
+            "TerraformPath" = "PROD/us-west-2/DR/iam-open-invoice-processor-glue"
+
+        }
+
+        # (6 unchanged attributes hidden)
+
+    }
+
+
+Plan: 0 to add, 1 to change, 0 to destroy.
+
+
+─────────────────────────────────────────────────────────────────────────────
+
+
+Note: You didn't use the -out option to save this plan, so OpenTofu can't
+
+guarantee to take exactly these actions if you run "tofu apply" now.
+
+Command completed with ExitCode (0)
