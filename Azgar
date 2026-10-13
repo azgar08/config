@@ -1,56 +1,23 @@
-
-### Create the log group if it does not exist
-resource "null_resource" "create_log_groups" {
-  triggers = {
-    invoker   = uuid()
-    region    = data.aws_region.current.name
-    log_group = var.log_group_name
-  }
-
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-
-    command = <<-EOT
-      aws_log=$(aws logs describe-log-groups \
-        --log-group-name-prefix '${self.triggers.log_group}' \
-        --region '${self.triggers.region}' \
-        --query 'logGroups[*].logGroupName' \
-        --output text)
-
-      if [ -z "$aws_log" ]; then
-        echo "Creating log group ${self.triggers.log_group}"
-        aws logs create-log-group \
-          --log-group-name '${self.triggers.log_group}' \
-          --region '${self.triggers.region}'
-      else
-        echo "Log group exists: $aws_log"
-      fi
-    EOT
+terraform {
+  # Live modules pin exact provider version; generic modules let consumers pin the version.
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.0"
+    }
   }
 }
+
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 locals {
-  # Derive the function name from the Lambda ARN.
-  # Expected ARN format:
-  # arn:aws:lambda:region:account-id:function:function-name
-  lambda_name = element(split(":", var.lambda_arn), 6)
-}
-
-resource "aws_lambda_permission" "allow_cw_log" {
-  statement_id   = "AllowTriggerFrom-${local.log_id}"
-  action         = "lambda:InvokeFunction"
-  function_name  = local.lambda_name
-  principal      = "logs.amazonaws.com"
-  source_arn     = "${local.log_arn}:*"
-
-  depends_on = [null_resource.create_log_groups]
-}
-
-resource "aws_cloudwatch_log_subscription_filter" "lambda_log_subscription" {
-  name            = "${local.lambda_name}-subscription"
-  log_group_name  = var.log_group_name
-  filter_pattern  = ""
-  destination_arn = var.lambda_arn
-
-  depends_on = [aws_lambda_permission.allow_cw_log]
+  lambda_arn_list = split(":", var.lambda_arn)
+  lambda_name     = element(local.lambda_arn_list, length(local.lambda_arn_list) - 1)
+  glue_name_list  = split("/", var.log_group_name)
+  last_item       = element(local.glue_name_list, length(local.glue_name_list) - 1)
+  next_last_item  = element(local.glue_name_list, length(local.glue_name_list) - 2)
+  log_id          = contains(["error", "output"], local.last_item) ? "${local.next_last_item}_${local.last_item}" : local.last_item
+  ### Build log group ARN in case create new log group
+  log_arn         = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:${var.log_group_name}"
 }
