@@ -1,108 +1,68 @@
-### Configurations for FPF pipeline
 locals {
-  ### Naming format
-  service_role_prefix      = "arn:aws:iam::aws:policy/service-role"
-  iam_prefix               = "${var.project_name}-${var.aws_region}"
-  lambda_replication_cleanup_name     = "${var.project_name}-${var.lambda_replication_cleanup_name}-${var.environment}"
-  lambda_handler = "lambda_replication_cleanup.lambda_handler"
-  lambda_org_purge_name     = "${var.project_name}-${var.lambda_org_purge_name}-${var.environment}"
-  lambda_org_purge_handler = "lambda_org_cleanup.lambda_handler"
+  account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
+  region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
 
-  ### Retrieve data from remote state
-  kms_arn                  = var.kms_arn
-  event_enable = true
-  event_target_input = jsonencode({})  
-
-  ### Resource settings
-  lambda_src_path   = "/tmp/src/lambda/lambda-replication-cleanup"
-  db_schema         = "raas_dl_etl"
-  db_table          = "erf_replication_events"
-  cleanup_days      = "90 DAYS"
-  sqs_notification_name = var.sqs_notification_name
-  sqs_notification_url  = "https://sqs.${var.aws_region}.amazonaws.com/${data.aws_caller_identity.current.account_id}/${local.sqs_notification_name}"  
-  sqs_notification_arn  = "arn:aws:sqs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:${local.sqs_notification_name}"
-  org_purge_lambda_src_path = "/tmp/src/lambda/lambda-org-cleanup"
-  service_base_url         = var.account_name == "PROD" ? "https://services.${lower(local.account_name)}.raas.deluxe.com" : var.environment == "qa" ? "https://services-${split("-", var.aws_region)[1]}.qe.raas.deluxe.com" : "https://services-${split("-", var.aws_region)[1]}.${var.environment}.raas.deluxe.com"
-
-  ### IAM Policy settings
-  lambda_replication_cleanup_policy = [
-    {
-      name        = "${local.iam_prefix}-${var.lambda_replication_cleanup_name}-secret-policy-${var.environment}"
-      description = "Secret Manager access policy for ${local.lambda_replication_cleanup_name}"
-      statement = templatefile("${path.module}/templates/lambda-secret-policy.tftpl", {
-        secret_cfg_arn  = data.aws_secretsmanager_secret.secret_cfg.arn
-        secret_cert_arn = data.aws_secretsmanager_secret.secret_cert.arn
-      })
-    },
-    {
-      name        = "${local.iam_prefix}-${var.lambda_replication_cleanup_name}-sqs-policy-${var.environment}"
-      description = "SQS access policy for ${local.lambda_replication_cleanup_name}"
-      statement = templatefile("${path.module}/templates/lambda-sqs-policy.tftpl", {
-        sqs_alert_arn = local.sqs_notification_arn
-      })
-    },
-    {
-      name        = "${local.iam_prefix}-${var.lambda_replication_cleanup_name}-kms-policy-${var.environment}"
-      description = "KMS access policy for ${local.lambda_replication_cleanup_name}"
-      statement   = templatefile("${path.module}/templates/lambda-kms-policy.tftpl", { kms_arn = local.kms_arn })
-    }     
-  ]
-
-  lambda_org_purge_policy = [
-    {
-      name        = "${local.iam_prefix}-${var.lambda_org_purge_name}-secret-policy-${var.environment}"
-      description = "Secret Manager access policy for ${local.lambda_org_purge_name}"
-      statement = templatefile("${path.module}/templates/lambda-secret-policy.tftpl", {
-        secret_cfg_arn  = data.aws_secretsmanager_secret.secret_cfg.arn
-        secret_cert_arn = data.aws_secretsmanager_secret.secret_cert.arn
-      })
-    },
-    {
-      name        = "${local.iam_prefix}-${var.lambda_org_purge_name}-sqs-policy-${var.environment}"
-      description = "SQS access policy for ${local.lambda_org_purge_name}"
-      statement = templatefile("${path.module}/templates/lambda-sqs-policy.tftpl", {
-        sqs_alert_arn = local.sqs_notification_arn
-      })
-    },
-    {
-      name        = "${local.iam_prefix}-${var.lambda_org_purge_name}-kms-policy-${var.environment}"
-      description = "KMS access policy for ${local.lambda_org_purge_name}"
-      statement   = templatefile("${path.module}/templates/lambda-kms-policy.tftpl", { kms_arn = local.kms_arn })
-    }     
-  ]
-
-
-  event_trigger_policy = [
-    {
-      name        = "${local.iam_prefix}-${var.lambda_replication_cleanup_name}-event-trigger-policy-${var.environment}"
-      description = "Event bridge trigger policy for ${local.lambda_replication_cleanup_name}"
-      statement   = templatefile("${path.module}/templates/event-lambda-policy.tftpl", { 
-        lambda_arn = module.auroracleanup_lambda.lambda_arn
-        lambda_arn = module.auroracleanup_lambda.lambda_arn
-         })
-    }
-  ]   
-
-  app_environment = var.aws_region == "us-west-2" ? "dr" : var.environment
-  account_name = var.account_name == "RC" ? "NONPROD" : var.account_name
-
+  aws_region     = local.region_vars.locals.aws_region
+  environment    = local.environment_vars.locals.environment
+  project_name   = local.environment_vars.locals.project_name
+  account_name   = local.account_vars.locals.account_name
+  module_version = "1.3.0"
 }
 
-data "aws_caller_identity" "current" {}
 
-data "aws_secretsmanager_secret" "secret_cfg" {
-  name = var.secret_rds_cfg
+# Terragrunt will copy the Terraform configurations specified by the source parameter, along with any files in the
+# working directory, into a temporary folder, and execute your Terraform commands in that folder.
+# !!! CHANGE VALUE HERE FOR EACH FRAMEWORK !!!
+terraform {
+  source = "git::ssh://git@bitbucket.org:/deluxe-development/dl-aws-auroracleanup//datalake-auroracleanup//?ref=${local.module_version}"
 }
 
-data "aws_secretsmanager_secret" "secret_cert" {
-  name = var.secret_rds_cert
+# Include all settings from the root terragrunt.hcl file
+include "root" {
+  path = find_in_parent_folders()
 }
 
-data "aws_lambda_layer_version" "lambda_layers" {
-  for_each   = toset(var.lambda_replication_cleanup_layers)
-  layer_name = each.value
+dependency "datalake" {
+  config_path                             = "${get_terragrunt_dir()}/../../datalake/"
+  mock_outputs_allowed_terraform_commands = ["validate", "destroy", "plan-all"]
+  mock_outputs = {
+    glue_assets_s3_id = "123",
+    encyption_kms_arn = "123"
+  }
 }
-data "aws_lambda_layer_version" "org_purge_lambda_layers" {
-  for_each   = toset(var.lambda_org_purge_layers)
-  layer_name = each.value
+
+dependency "vpc-info" {
+  config_path                             = "${get_terragrunt_dir()}/../../../_global/vpc-info"
+  mock_outputs_allowed_terraform_commands = ["validate", "destroy", "plan-all"]
+  mock_outputs = {
+    vpc_id = "123"
+  }
+}
+
+dependency "lambda-subnets" {
+  config_path = "${get_terragrunt_dir()}/../../../_global/lambda-glue-subnets"
+}
+
+# These are the variables we have to pass in to use the module specified in the terragrunt configuration above
+inputs = {
+  aws_region                        = local.aws_region
+  environment                       = local.environment
+  project_name                      = local.project_name
+  account_name                      = local.account_name
+  vpc_id                            = dependency.vpc-info.outputs.vpc_id
+  subnet_ids                        = dependency.lambda-subnets.outputs.lambda_subnet_ids
+  kms_arn                           = dependency.datalake.outputs.encyption_kms_arn
+  event_schedule                    = "cron(0 0 ? * * *)"
+  lambda_replication_cleanup_name   = "replication-cleanup-lambda"
+  lambda_replication_cleanup_layers = ["dbutils-layer-${local.environment}", "notifications-layer-${local.environment}"]
+  secret_rds_cfg                    = "dlx-raas-dl-rds-conf-db-config-${local.environment}"
+  secret_rds_cert                   = "dlx-raas-rds-etl-db-ssl-cert"
+  rds_db_name                       = "r360_v3_${lower(local.environment)}"
+  sqs_notification_name             = "${local.project_name}-notifications-queue-${local.environment}"
+  lambda_org_purge_name             = "org-purge-lambda"
+  lambda_org_purge_layers           = ["dbutils-layer-${local.environment}", "notifications-layer-${local.environment}"]
+  function_tags = {
+    "Artifact" = "REPLACE"
+  }
 }
