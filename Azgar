@@ -1,87 +1,80 @@
-### Security Group for Lambda within VPC
-resource "aws_security_group" "lambda_sg" {
-  count  = var.vpc_id == "" ? 0 : 1
-  vpc_id = var.vpc_id
-
-  egress {
-    cidr_blocks = ["0.0.0.0/0"]
-    from_port   = "0"
-    to_port     = "0"
-    protocol    = "-1"
-    self        = "false"
-  }
+variable "vpc_id" {
+  type        = string
+  default     = ""
+  description = "VPC ID to create lambda function."
 }
 
-### pip install requirements file 
-resource "null_resource" "prepare_packages" {
-  triggers = {
-    invoker  = uuid()
-    src_path = var.lambda_src_path
-  }
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    command     = <<-EOT
-      pushd ${self.triggers.src_path}
-      if [[ -e "requirements.txt" ]]; then
-        pip install --upgrade -t ./ -r requirements.txt
-      fi
-      popd
-    EOT
-  }
+variable "lambda_subnets" {
+  type        = list(string)
+  default     = null
+  description = "Subnets for Lambda function"
 }
 
-### Use time_sleep to wait for null_resource install dependencies then archive source folder
-resource "time_sleep" "package" {
-  create_duration = "1s"
-  triggers = {
-    package_id  = null_resource.prepare_packages.id
-    src_dir     = var.lambda_src_path
-  }
+variable "lambda_name" {
+  type        = string
+  description = "Lambda function name"
 }
 
-### Archive Lambda source
-data "archive_file" "lambda" {
-  type             = "zip"
-  source_dir       = time_sleep.package.triggers["src_dir"]
-  output_file_mode = "0666"
-  output_path      = local.zip_path
+variable "lambda_role_arn" {
+  type        = string
+  description = "Lambda execution role ARN"
 }
 
-resource "aws_lambda_function" "lambda_function" {
-  function_name    = var.lambda_name
-  role             = var.lambda_role_arn
-  handler          = var.lambda_handler_name
-  filename         = local.zip_path
-  source_code_hash = data.archive_file.lambda.output_base64sha256
-  runtime          = var.lambda_runtime
-  memory_size      = var.lambda_memory_size
-  timeout          = var.lambda_timeout
-  layers           = var.lambda_layers
-  tags             = merge(var.tags, var.function_tags)
-
-  dynamic "vpc_config" {
-    for_each = var.vpc_id == "" ? toset([]) : toset([1])
-    content {
-      subnet_ids         = var.lambda_subnets
-      security_group_ids = [aws_security_group.lambda_sg[0].id]
-    }
-  }
-
-  dynamic "environment" {
-    for_each = var.lambda_env_vars != null ? toset([1]) : toset([])
-    content {
-      variables = var.lambda_env_vars
-    }
-  }
+variable "lambda_src_path" {
+  type        = string
+  description = "Source path of lambda function"
 }
 
-### Create lambda log group then subscribe to the lambda log consumer
-module "glue_logs_subscription" {
-  source = "../aws-log-subscription"
-  count  = var.log_subscription_lambda == null ? 0 : 1
+variable "lambda_handler_name" {
+  type        = string
+  default     = "lambda_function.lambda_handler"
+  description = "Handler name of lambda function. Format: file_name.handler_name"
+}
 
-  lambda_arn     = var.log_subscription_lambda
-  log_group_name = "/aws/lambda/${var.lambda_name}"
+variable "lambda_runtime" {
+  type        = string
+  default     = "python3.9"
+  description = "Runtime environment of lambda function"
+}
 
-  depends_on = [aws_lambda_function.lambda_function]
+variable "lambda_memory_size" {
+  type        = number
+  default     = 128
+  description = "Memory size of lambda function."
+}
+
+variable "lambda_timeout" {
+  type        = number
+  default     = 30
+  description = "Timeout of lambda function in second."
+}
+
+variable "lambda_env_vars" {
+  type        = map(string)
+  default     = null
+  description = "List of environment variables for lambda function."
+}
+
+variable "lambda_layers" {
+  type        = list(string)
+  default     = null
+  description = "List of layers for lambda function"
+}
+
+variable "tags" {
+  type        = map(any)
+  default     = {}
+  description = "Additional tags (e.g. map(`BusinessUnit`,`XYZ`)."
+}
+
+variable "log_subscription_lambda" {
+  type        = string
+  description = "Lambda log subscription to the error, output log groups of Glue job"
+  default     = null
+}
+
+variable "function_tags" {
+  description = "A list of tags for function"
+  type        = map(any)
+  default     = {}
 }
