@@ -1,23 +1,87 @@
-terraform {
-  # Live modules pin exact provider version; generic modules let consumers pin the version.
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.0"
+### Security Group for Lambda within VPC
+resource "aws_security_group" "lambda_sg" {
+  count  = var.vpc_id == "" ? 0 : 1
+  vpc_id = var.vpc_id
+
+  egress {
+    cidr_blocks = ["0.0.0.0/0"]
+    from_port   = "0"
+    to_port     = "0"
+    protocol    = "-1"
+    self        = "false"
+  }
+}
+
+### pip install requirements file 
+resource "null_resource" "prepare_packages" {
+  triggers = {
+    invoker  = uuid()
+    src_path = var.lambda_src_path
+  }
+  provisioner "local-exec" {
+    interpreter = ["bash", "-c"]
+    command     = <<-EOT
+      pushd ${self.triggers.src_path}
+      if [[ -e "requirements.txt" ]]; then
+        pip install --upgrade -t ./ -r requirements.txt
+      fi
+      popd
+    EOT
+  }
+}
+
+### Use time_sleep to wait for null_resource install dependencies then archive source folder
+resource "time_sleep" "package" {
+  create_duration = "1s"
+  triggers = {
+    package_id  = null_resource.prepare_packages.id
+    src_dir     = var.lambda_src_path
+  }
+}
+
+### Archive Lambda source
+data "archive_file" "lambda" {
+  type             = "zip"
+  source_dir       = time_sleep.package.triggers["src_dir"]
+  output_file_mode = "0666"
+  output_path      = local.zip_path
+}
+
+resource "aws_lambda_function" "lambda_function" {
+  function_name    = var.lambda_name
+  role             = var.lambda_role_arn
+  handler          = var.lambda_handler_name
+  filename         = local.zip_path
+  source_code_hash = data.archive_file.lambda.output_base64sha256
+  runtime          = var.lambda_runtime
+  memory_size      = var.lambda_memory_size
+  timeout          = var.lambda_timeout
+  layers           = var.lambda_layers
+  tags             = merge(var.tags, var.function_tags)
+
+  dynamic "vpc_config" {
+    for_each = var.vpc_id == "" ? toset([]) : toset([1])
+    content {
+      subnet_ids         = var.lambda_subnets
+      security_group_ids = [aws_security_group.lambda_sg[0].id]
+    }
+  }
+
+  dynamic "environment" {
+    for_each = var.lambda_env_vars != null ? toset([1]) : toset([])
+    content {
+      variables = var.lambda_env_vars
     }
   }
 }
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
+### Create lambda log group then subscribe to the lambda log consumer
+module "glue_logs_subscription" {
+  source = "../aws-log-subscription"
+  count  = var.log_subscription_lambda == null ? 0 : 1
 
-locals {
-  lambda_arn_list = split(":", var.lambda_arn)
-  lambda_name     = element(local.lambda_arn_list, length(local.lambda_arn_list) - 1)
-  glue_name_list  = split("/", var.log_group_name)
-  last_item       = element(local.glue_name_list, length(local.glue_name_list) - 1)
-  next_last_item  = element(local.glue_name_list, length(local.glue_name_list) - 2)
-  log_id          = contains(["error", "output"], local.last_item) ? "${local.next_last_item}_${local.last_item}" : local.last_item
-  ### Build log group ARN in case create new log group
-  log_arn         = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:${var.log_group_name}"
+  lambda_arn     = var.log_subscription_lambda
+  log_group_name = "/aws/lambda/${var.lambda_name}"
+
+  depends_on = [aws_lambda_function.lambda_function]
 }
