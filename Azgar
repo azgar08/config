@@ -1,41 +1,108 @@
-### To handle the log subscription at provisioning time, we have to create log group in TF then subscribe to the log forwarder lambda
-### Because this stack will run to update on existing infrastructure so it has to support fresh and update deployment
-### so we have to check if the log group exists then do nothing or else create new log group
-resource "null_resource" "create_log_groups" {
-  triggers = {
-    invoker   = uuid()
-    region    = data.aws_region.current.name
-    log_group = var.log_group_name
-  }
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    command     = <<-EOT
-      aws_log=$(aws logs describe-log-groups --log-group-name-prefix ${self.triggers.log_group} --region ${self.triggers.region} --query 'logGroups[*].logGroupName' --output text)
-      if [ -z "$aws_log" ]; then
-        echo "Create log group"
-        aws logs create-log-group --log-group-name ${self.triggers.log_group} --region ${self.triggers.region}
-      else
-        echo "Log group $aws_log exists"
-      fi
-    EOT
-  }
+### Configurations for FPF pipeline
+locals {
+  ### Naming format
+  service_role_prefix      = "arn:aws:iam::aws:policy/service-role"
+  iam_prefix               = "${var.project_name}-${var.aws_region}"
+  lambda_replication_cleanup_name     = "${var.project_name}-${var.lambda_replication_cleanup_name}-${var.environment}"
+  lambda_handler = "lambda_replication_cleanup.lambda_handler"
+  lambda_org_purge_name     = "${var.project_name}-${var.lambda_org_purge_name}-${var.environment}"
+  lambda_org_purge_handler = "lambda_org_cleanup.lambda_handler"
+
+  ### Retrieve data from remote state
+  kms_arn                  = var.kms_arn
+  event_enable = true
+  event_target_input = jsonencode({})  
+
+  ### Resource settings
+  lambda_src_path   = "/tmp/src/lambda/lambda-replication-cleanup"
+  db_schema         = "raas_dl_etl"
+  db_table          = "erf_replication_events"
+  cleanup_days      = "90 DAYS"
+  sqs_notification_name = var.sqs_notification_name
+  sqs_notification_url  = "https://sqs.${var.aws_region}.amazonaws.com/${data.aws_caller_identity.current.account_id}/${local.sqs_notification_name}"  
+  sqs_notification_arn  = "arn:aws:sqs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:${local.sqs_notification_name}"
+  org_purge_lambda_src_path = "/tmp/src/lambda/lambda-org-cleanup"
+  service_base_url         = var.account_name == "PROD" ? "https://services.${lower(local.account_name)}.raas.deluxe.com" : var.environment == "qa" ? "https://services-${split("-", var.aws_region)[1]}.qe.raas.deluxe.com" : "https://services-${split("-", var.aws_region)[1]}.${var.environment}.raas.deluxe.com"
+
+  ### IAM Policy settings
+  lambda_replication_cleanup_policy = [
+    {
+      name        = "${local.iam_prefix}-${var.lambda_replication_cleanup_name}-secret-policy-${var.environment}"
+      description = "Secret Manager access policy for ${local.lambda_replication_cleanup_name}"
+      statement = templatefile("${path.module}/templates/lambda-secret-policy.tftpl", {
+        secret_cfg_arn  = data.aws_secretsmanager_secret.secret_cfg.arn
+        secret_cert_arn = data.aws_secretsmanager_secret.secret_cert.arn
+      })
+    },
+    {
+      name        = "${local.iam_prefix}-${var.lambda_replication_cleanup_name}-sqs-policy-${var.environment}"
+      description = "SQS access policy for ${local.lambda_replication_cleanup_name}"
+      statement = templatefile("${path.module}/templates/lambda-sqs-policy.tftpl", {
+        sqs_alert_arn = local.sqs_notification_arn
+      })
+    },
+    {
+      name        = "${local.iam_prefix}-${var.lambda_replication_cleanup_name}-kms-policy-${var.environment}"
+      description = "KMS access policy for ${local.lambda_replication_cleanup_name}"
+      statement   = templatefile("${path.module}/templates/lambda-kms-policy.tftpl", { kms_arn = local.kms_arn })
+    }     
+  ]
+
+  lambda_org_purge_policy = [
+    {
+      name        = "${local.iam_prefix}-${var.lambda_org_purge_name}-secret-policy-${var.environment}"
+      description = "Secret Manager access policy for ${local.lambda_org_purge_name}"
+      statement = templatefile("${path.module}/templates/lambda-secret-policy.tftpl", {
+        secret_cfg_arn  = data.aws_secretsmanager_secret.secret_cfg.arn
+        secret_cert_arn = data.aws_secretsmanager_secret.secret_cert.arn
+      })
+    },
+    {
+      name        = "${local.iam_prefix}-${var.lambda_org_purge_name}-sqs-policy-${var.environment}"
+      description = "SQS access policy for ${local.lambda_org_purge_name}"
+      statement = templatefile("${path.module}/templates/lambda-sqs-policy.tftpl", {
+        sqs_alert_arn = local.sqs_notification_arn
+      })
+    },
+    {
+      name        = "${local.iam_prefix}-${var.lambda_org_purge_name}-kms-policy-${var.environment}"
+      description = "KMS access policy for ${local.lambda_org_purge_name}"
+      statement   = templatefile("${path.module}/templates/lambda-kms-policy.tftpl", { kms_arn = local.kms_arn })
+    }     
+  ]
+
+
+  event_trigger_policy = [
+    {
+      name        = "${local.iam_prefix}-${var.lambda_replication_cleanup_name}-event-trigger-policy-${var.environment}"
+      description = "Event bridge trigger policy for ${local.lambda_replication_cleanup_name}"
+      statement   = templatefile("${path.module}/templates/event-lambda-policy.tftpl", { 
+        lambda_arn = module.auroracleanup_lambda.lambda_arn
+        lambda_arn = module.auroracleanup_lambda.lambda_arn
+         })
+    }
+  ]   
+
+  app_environment = var.aws_region == "us-west-2" ? "dr" : var.environment
+  account_name = var.account_name == "RC" ? "NONPROD" : var.account_name
+
 }
 
-resource "aws_lambda_permission" "allow_cw_log" {
-  statement_id  = "AllowTriggerFrom-${local.log_id}"
-  action        = "lambda:InvokeFunction"
-  function_name = local.lambda_name
-  principal     = "logs.amazonaws.com"
-  source_arn    = "${local.log_arn}:*"
+data "aws_caller_identity" "current" {}
 
-  depends_on = [null_resource.create_log_groups]
+data "aws_secretsmanager_secret" "secret_cfg" {
+  name = var.secret_rds_cfg
 }
 
-resource "aws_cloudwatch_log_subscription_filter" "lambda_log_subscription" {
-  name            = "${local.lambda_name}-subscription"
-  log_group_name  = var.log_group_name
-  filter_pattern  = ""
-  destination_arn = var.lambda_arn
+data "aws_secretsmanager_secret" "secret_cert" {
+  name = var.secret_rds_cert
+}
 
-  depends_on = [aws_lambda_permission.allow_cw_log]
+data "aws_lambda_layer_version" "lambda_layers" {
+  for_each   = toset(var.lambda_replication_cleanup_layers)
+  layer_name = each.value
+}
+data "aws_lambda_layer_version" "org_purge_lambda_layers" {
+  for_each   = toset(var.lambda_org_purge_layers)
+  layer_name = each.value
 }
