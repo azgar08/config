@@ -1,19 +1,38 @@
-(DevOps) Remove the CloudWatch logs to Dynatrace migration
+╷
 
+│ Error: invalid value for function_name (must be valid function name or function ARN)
 
+│ 
 
+│   with module.org_purge_lambda.module.glue_logs_subscription[0].aws_lambda_permission.allow_cw_log,
 
-Key details
-Standard Fields
-Release Information
-Description
+│   on dependency_modules/aws-log-subscription/log-subscription.tf line 27, in resource "aws_lambda_permission" "allow_cw_log":
 
-Done when
+│   27:   function_name = local.lambda_name
 
-We no longer want to Pursue the consolidation of cloudwatch logs to Dynatrace
+│ 
 
-Branch for infra - RAAS-14461: Create CloudWatch to Dynatrace log forwarding infrastructure
-Done
+╵
 
+╷
 
-Destroy or delete all infra for firehose connections to Dynatrace and remove branch
+│ Error: expected length of function_name to be in the range (1 - 140), got 
+
+│ 
+
+│   with module.org_purge_lambda.module.glue_logs_subscription[0].aws_lambda_permission.allow_cw_log,
+
+│   on dependency_modules/aws-log-subscription/log-subscription.tf line 27, in resource "aws_lambda_permission" "allow_cw_log":
+
+│   27:   function_name = local.lambda_name
+
+│ 
+
+╵
+
+╷
+
+│ Error: invalid value for function_name (must be valid function name or function ARN)
+
+│ 
+
