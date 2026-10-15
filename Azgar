@@ -1,80 +1,8 @@
-variable "vpc_id" {
-  type        = string
-  default     = ""
-  description = "VPC ID to create lambda function."
-}
+Enable RDS Proxy for RC and PROD environments 
+Create Terragrunt State File Migration Pipeline in Harness
+R360+ CI builds to pull Helm chart from Artifactory instead of Bitbucket - micro-service Services
+RC DR Infrastructure Setup
 
-variable "lambda_subnets" {
-  type        = list(string)
-  default     = null
-  description = "Subnets for Lambda function"
-}
-
-variable "lambda_name" {
-  type        = string
-  description = "Lambda function name"
-}
-
-variable "lambda_role_arn" {
-  type        = string
-  description = "Lambda execution role ARN"
-}
-
-variable "lambda_src_path" {
-  type        = string
-  description = "Source path of lambda function"
-}
-
-variable "lambda_handler_name" {
-  type        = string
-  default     = "lambda_function.lambda_handler"
-  description = "Handler name of lambda function. Format: file_name.handler_name"
-}
-
-variable "lambda_runtime" {
-  type        = string
-  default     = "python3.9"
-  description = "Runtime environment of lambda function"
-}
-
-variable "lambda_memory_size" {
-  type        = number
-  default     = 128
-  description = "Memory size of lambda function."
-}
-
-variable "lambda_timeout" {
-  type        = number
-  default     = 30
-  description = "Timeout of lambda function in second."
-}
-
-variable "lambda_env_vars" {
-  type        = map(string)
-  default     = null
-  description = "List of environment variables for lambda function."
-}
-
-variable "lambda_layers" {
-  type        = list(string)
-  default     = null
-  description = "List of layers for lambda function"
-}
-
-variable "tags" {
-  type        = map(any)
-  default     = {}
-  description = "Additional tags (e.g. map(`BusinessUnit`,`XYZ`)."
-}
-
-variable "log_subscription_lambda" {
-  type        = string
-  description = "Lambda log subscription to the error, output log groups of Glue job"
-  default     = null
-}
-
-variable "function_tags" {
-  description = "A list of tags for function"
-  type        = map(any)
-  default     = {}
-}
+Customer Appreciation for Exceptional Ownership and Client Support
+Appreciation for Technical Excellence and Collaboration
+DR initiative support & DevOps Excellence
