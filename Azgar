@@ -1,25 +1,51 @@
-
-output "rest_api_id" {
-  description = "REST API ID"
-  value       = aws_api_gateway_rest_api.rest_api.id
+terraform {
+  source = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//api-gateway?ref=YOUR_BRANCH_OR_TAG"
 }
 
-output "rest_api_arn" {
-  description = "REST API ARN"
-  value       = aws_api_gateway_rest_api.rest_api.arn
+include "root" {
+  path = find_in_parent_folders()
 }
 
-output "execution_arn" {
-  description = "API Gateway execution ARN for Lambda permissions"
-  value       = aws_api_gateway_rest_api.rest_api.execution_arn
+locals {
+  account_vars = read_terragrunt_config(
+    find_in_parent_folders("account.hcl")
+  )
+
+  region_vars = read_terragrunt_config(
+    find_in_parent_folders("region.hcl")
+  )
+
+  environment_vars = read_terragrunt_config(
+    find_in_parent_folders("env.hcl")
+  )
+
+  environment = lower(local.environment_vars.locals.environment)
+  region      = local.region_vars.locals.aws_region
 }
 
-output "stage_name" {
-  description = "Deployed API stage name"
-  value       = aws_api_gateway_stage.stage.stage_name
-}
+inputs = {
+  api_name        = "dlx-pci-redaction-api-${local.environment}"
+  api_description = "PCI Data Redaction Platform API"
+  stage_name      = local.environment
 
-output "invoke_url" {
-  description = "API Gateway stage invoke URL"
-  value       = aws_api_gateway_stage.stage.invoke_url
+  # Replace with your existing Lambda's actual invoke ARN.
+  lambda_invoke_arn = "REPLACE_WITH_LAMBDA_INVOKE_ARN"
+
+  # Use the actual VPC endpoint ID for your private API.
+  vpc_endpoint_ids = [
+    "vpce-REPLACE_WITH_ACTUAL_ID"
+  ]
+
+  http_methods = [
+    "GET",
+    "POST"
+  ]
+
+  # Set this according to your approved security design.
+  authorization_type = "NONE"
+
+  tags = {
+    Environment   = local.environment
+    TerraformPath = path_relative_to_include()
+  }
 }
