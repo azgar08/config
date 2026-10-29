@@ -1,55 +1,25 @@
 
-variable "api_name" {
-  description = "Name of the API Gateway REST API"
-  type        = string
+output "rest_api_id" {
+  description = "REST API ID"
+  value       = aws_api_gateway_rest_api.rest_api.id
 }
 
-variable "api_description" {
-  description = "Description of the REST API"
-  type        = string
-  default     = "PCI Data Redaction Platform API"
+output "rest_api_arn" {
+  description = "REST API ARN"
+  value       = aws_api_gateway_rest_api.rest_api.arn
 }
 
-variable "stage_name" {
-  description = "API Gateway deployment stage"
-  type        = string
-  default     = "dev"
+output "execution_arn" {
+  description = "API Gateway execution ARN for Lambda permissions"
+  value       = aws_api_gateway_rest_api.rest_api.execution_arn
 }
 
-variable "lambda_invoke_arn" {
-  description = "Lambda function invoke ARN used by API Gateway"
-  type        = string
+output "stage_name" {
+  description = "Deployed API stage name"
+  value       = aws_api_gateway_stage.stage.stage_name
 }
 
-variable "vpc_endpoint_ids" {
-  description = "VPC endpoint IDs permitted to access the private API"
-  type        = list(string)
-
-  validation {
-    condition     = length(var.vpc_endpoint_ids) > 0
-    error_message = "At least one VPC endpoint ID is required for a private API."
-  }
-}
-
-variable "http_methods" {
-  description = "HTTP methods exposed by the API"
-  type        = set(string)
-  default     = ["GET", "POST"]
-}
-
-variable "authorization_type" {
-  description = "API Gateway method authorization type"
-  type        = string
-  default     = "NONE"
-
-  validation {
-    condition     = contains(["NONE", "AWS_IAM", "CUSTOM", "COGNITO_USER_POOLS"], var.authorization_type)
-    error_message = "Choose a supported API Gateway REST API authorization type."
-  }
-}
-
-variable "tags" {
-  description = "Tags applied to API Gateway resources that support tags"
-  type        = map(string)
-  default     = {}
+output "invoke_url" {
+  description = "API Gateway stage invoke URL"
+  value       = aws_api_gateway_stage.stage.invoke_url
 }
