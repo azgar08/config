@@ -1,209 +1,72 @@
-$ terragrunt plan
-Acquiring state lock. This may take a few moments...
+locals {
+  account_vars    = read_terragrunt_config(find_in_parent_folders("account.hcl"))
+  aws_account_id  = local.account_vars.locals.aws_account_id
+  region_vars     = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  aws_region      = local.region_vars.locals.aws_region
+  environment_var = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+  environment     = lower(local.environment_var.locals.environment)
+  name            = "dlx-r360plus-redaction-ui-backend-lambda-${local.environment}"
+  rule_name       = "${local.name}-schedule"
+  dt_layer_arn    = local.environment_var.locals.dt_layer_arn
+  dt_log_endpoint = "https://esn28329.live.dynatrace.com/api/v2/logs/ingest"
+  source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//lambda"
+}
 
-Terraform used the selected providers to generate the following execution
-plan. Resource actions are indicated with the following symbols:
-  + create
+dependency "vpc-info" {
+  config_path = find_in_parent_folders("_global/vpc-info")
+}
 
-Terraform will perform the following actions:
+dependency "lambda-subnets" {
+  config_path = find_in_parent_folders("_global/pci-subnets")
+}
 
-  # aws_api_gateway_deployment.deployment will be created
-  + resource "aws_api_gateway_deployment" "deployment" {
-      + created_date = (known after apply)
-      + id           = (known after apply)
-      + region       = "us-east-1"
-      + rest_api_id  = (known after apply)
-      + triggers     = (known after apply)
-    }
+dependency "common-tags" {
+  config_path = find_in_parent_folders("common-tags")
+}
 
-  # aws_api_gateway_integration.proxy["GET"] will be created
-  + resource "aws_api_gateway_integration" "proxy" {
-      + cache_namespace         = (known after apply)
-      + connection_type         = "INTERNET"
-      + http_method             = "GET"
-      + id                      = (known after apply)
-      + integration_http_method = "POST"
-      + passthrough_behavior    = (known after apply)
-      + region                  = "us-east-1"
-      + resource_id             = (known after apply)
-      + response_transfer_mode  = (known after apply)
-      + rest_api_id             = (known after apply)
-      + timeout_milliseconds    = 29000
-      + type                    = "AWS_PROXY"
-      + uri                     = "REPLACE_WITH_LAMBDA_INVOKE_ARN"
-    }
+dependency "kms-pci-redaction" {
+  config_path = find_in_parent_folders("pci-redaction/kms/kms-pci-redaction")
+}
 
-  # aws_api_gateway_integration.proxy["POST"] will be created
-  + resource "aws_api_gateway_integration" "proxy" {
-      + cache_namespace         = (known after apply)
-      + connection_type         = "INTERNET"
-      + http_method             = "POST"
-      + id                      = (known after apply)
-      + integration_http_method = "POST"
-      + passthrough_behavior    = (known after apply)
-      + region                  = "us-east-1"
-      + resource_id             = (known after apply)
-      + response_transfer_mode  = (known after apply)
-      + rest_api_id             = (known after apply)
-      + timeout_milliseconds    = 29000
-      + type                    = "AWS_PROXY"
-      + uri                     = "REPLACE_WITH_LAMBDA_INVOKE_ARN"
-    }
+dependency "secret-dynatrace" {
+  config_path = find_in_parent_folders("secrets/secret-dynatrace-auth-token")
+}
 
-  # aws_api_gateway_method.proxy["GET"] will be created
-  + resource "aws_api_gateway_method" "proxy" {
-      + api_key_required = false
-      + authorization    = "NONE"
-      + http_method      = "GET"
-      + id               = (known after apply)
-      + region           = "us-east-1"
-      + resource_id      = (known after apply)
-      + rest_api_id      = (known after apply)
-    }
+inputs = {
+  name       = local.name
+  account_id = local.aws_account_id
+  tags = merge(dependency.common-tags.outputs.common_tags, {
+    "TerraformPath" = path_relative_to_include()
+  })
 
-  # aws_api_gateway_method.proxy["POST"] will be created
-  + resource "aws_api_gateway_method" "proxy" {
-      + api_key_required = false
-      + authorization    = "NONE"
-      + http_method      = "POST"
-      + id               = (known after apply)
-      + region           = "us-east-1"
-      + resource_id      = (known after apply)
-      + rest_api_id      = (known after apply)
-    }
+  #IAM VARS
+  policy_statement = templatefile("policy/statement.tftpl", {
+    lambda_kms_arn                     = dependency.kms-pci-redaction.outputs.kms_arn,
+    dt_secret_arn                      = dependency.secret-dynatrace.outputs.secret_arn,
+    dt_secret_kms_arn                  = dependency.secret-dynatrace.outputs.kms_arn
+  })
+  trusted_entities = [
+    "lambda.amazonaws.com"
+  ]
 
-  # aws_api_gateway_resource.proxy will be created
-  + resource "aws_api_gateway_resource" "proxy" {
-      + id          = (known after apply)
-      + parent_id   = (known after apply)
-      + path        = (known after apply)
-      + path_part   = "{proxy+}"
-      + region      = "us-east-1"
-      + rest_api_id = (known after apply)
-    }
+  #LAMBDA VARS
+  vpc_subnet_ids = dependency.lambda-subnets.outputs.pci_subnet_ids
+  vpc_security_group_ids = [
+    dependency.vpc-info.outputs.baseline_sg_id
+  ]
+  lambda_handler     = "lambda_function.lambda_handler"
+  lambda_key         = dependency.kms-pci-redaction.outputs.kms_arn
+  lambda_runtime     = "python3.12"
+  lambda_memory_size = 512
+  lambda_environment_variables = {
+    REGION           = local.region
+    ENV              = local.environment
+  }
 
-  # aws_api_gateway_rest_api.rest_api will be created
-  + resource "aws_api_gateway_rest_api" "rest_api" {
-      + api_key_source               = (known after apply)
-      + arn                          = (known after apply)
-      + binary_media_types           = (known after apply)
-      + created_date                 = (known after apply)
-      + description                  = "UI Backend Platform API"
-      + disable_execute_api_endpoint = (known after apply)
-      + execution_arn                = (known after apply)
-      + id                           = (known after apply)
-      + minimum_compression_size     = (known after apply)
-      + name                         = "dlx-r360plus-ui-backend-api-dev"
-      + policy                       = jsonencode(
-            {
-              + Statement = [
-                  + {
-                      + Action    = "execute-api:Invoke"
-                      + Effect    = "Allow"
-                      + Principal = "*"
-                      + Resource  = "execute-api:/*"
-                    },
-                  + {
-                      + Action    = "execute-api:Invoke"
-                      + Condition = {
-                          + StringNotEquals = {
-                              + "aws:SourceVpce" = [
-                                  + "vpce-01387a31f113d12a8",
-                                ]
-                            }
-                        }
-                      + Effect    = "Deny"
-                      + Principal = "*"
-                      + Resource  = "execute-api:/*"
-                    },
-                ]
-              + Version   = "2012-10-17"
-            }
-        )
-      + region                       = "us-east-1"
-      + root_resource_id             = (known after apply)
-      + security_policy              = (known after apply)
-      + tags                         = {
-          + "AccountId"      = "697179190149"
-          + "AppEnvironment" = "dev"
-          + "AppName"        = "RAAS"
-          + "Application"    = "RAAS"
-          + "AwsRegion"      = "us-east-1"
-          + "CostCenter"     = "105057.02.11IT"
-          + "DeploymentTeam" = "DevOps"
-          + "Environment"    = "Development"
-          + "TerraformPath"  = "../../DEV/us-east-1/DEV/pci-redaction/api-gateway"
-        }
-      + tags_all                     = {
-          + "AccountId"      = "697179190149"
-          + "AppEnvironment" = "dev"
-          + "AppName"        = "RAAS"
-          + "Application"    = "RAAS"
-          + "AwsRegion"      = "us-east-1"
-          + "CostCenter"     = "105057.02.11IT"
-          + "DeploymentTeam" = "DevOps"
-          + "Environment"    = "Development"
-          + "TerraformPath"  = "../../DEV/us-east-1/DEV/pci-redaction/api-gateway"
-        }
+  # API GATEWAY TRIGGER VARS
+  enable_api_gateway_trigger = true
 
-      + endpoint_configuration {
-          + ip_address_type  = (known after apply)
-          + types            = [
-              + "PRIVATE",
-            ]
-          + vpc_endpoint_ids = [
-              + "vpce-01387a31f113d12a8",
-            ]
-        }
-    }
-
-  # aws_api_gateway_stage.stage will be created
-  + resource "aws_api_gateway_stage" "stage" {
-      + arn           = (known after apply)
-      + deployment_id = (known after apply)
-      + execution_arn = (known after apply)
-      + id            = (known after apply)
-      + invoke_url    = (known after apply)
-      + region        = "us-east-1"
-      + rest_api_id   = (known after apply)
-      + stage_name    = "dev"
-      + tags          = {
-          + "AccountId"      = "697179190149"
-          + "AppEnvironment" = "dev"
-          + "AppName"        = "RAAS"
-          + "Application"    = "RAAS"
-          + "AwsRegion"      = "us-east-1"
-          + "CostCenter"     = "105057.02.11IT"
-          + "DeploymentTeam" = "DevOps"
-          + "Environment"    = "Development"
-          + "TerraformPath"  = "../../DEV/us-east-1/DEV/pci-redaction/api-gateway"
-        }
-      + tags_all      = {
-          + "AccountId"      = "697179190149"
-          + "AppEnvironment" = "dev"
-          + "AppName"        = "RAAS"
-          + "Application"    = "RAAS"
-          + "AwsRegion"      = "us-east-1"
-          + "CostCenter"     = "105057.02.11IT"
-          + "DeploymentTeam" = "DevOps"
-          + "Environment"    = "Development"
-          + "TerraformPath"  = "../../DEV/us-east-1/DEV/pci-redaction/api-gateway"
-        }
-      + web_acl_arn   = (known after apply)
-    }
-
-Plan: 8 to add, 0 to change, 0 to destroy.
-
-Changes to Outputs:
-  + execution_arn = (known after apply)
-  + invoke_url    = (known after apply)
-  + rest_api_arn  = (known after apply)
-  + rest_api_id   = (known after apply)
-  + stage_name    = "dev"
-
-─────────────────────────────────────────────────────────────────────────────
-
-Note: You didn't use the -out option to save this plan, so Terraform can't
-guarantee to take exactly these actions if you run "terraform apply" now.
-Releasing state lock. This may take a few moments...
-
+  api_gateway_execution_arn = " "
+  api_gateway_http_method   = "GET"
+  api_gateway_resource_path = "*"
+}
