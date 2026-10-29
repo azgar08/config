@@ -1,43 +1,123 @@
+
+# =========================================================
+# REST API
+# =========================================================
+
 resource "aws_api_gateway_rest_api" "rest_api" {
-  name = var.api_name
+  name        = var.api_name
+  description = var.api_description
 
   endpoint_configuration {
-    types = ["REGIONAL"]
+    types            = ["PRIVATE"]
+    vpc_endpoint_ids = var.vpc_endpoint_ids
   }
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "execute-api:Invoke"
+        Resource  = "execute-api:/*"
+      },
+      {
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "execute-api:Invoke"
+        Resource  = "execute-api:/*"
+
+        Condition = {
+          StringNotEquals = {
+            "aws:SourceVpce" = var.vpc_endpoint_ids
+          }
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
 }
 
-resource "aws_api_gateway_resource" "resource" {
+
+# =========================================================
+# Proxy Resource
+# =========================================================
+
+resource "aws_api_gateway_resource" "proxy" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
   parent_id   = aws_api_gateway_rest_api.rest_api.root_resource_id
   path_part   = "{proxy+}"
 }
 
-resource "aws_api_gateway_method" "method" {
+
+# =========================================================
+# HTTP Methods
+# =========================================================
+
+resource "aws_api_gateway_method" "proxy" {
+  for_each = var.http_methods
+
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id
-  resource_id   = aws_api_gateway_resource.resource.id
-  http_method   = "GET"             
-  authorization = "NONE"
+  resource_id   = aws_api_gateway_resource.proxy.id
+  http_method   = each.value
+  authorization = var.authorization_type
 }
 
-resource "aws_api_gateway_integration" "lambda_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.rest_api.id
-  resource_id             = aws_api_gateway_resource.resource.id
-  http_method             = aws_api_gateway_method.method.http_method
-  integration_http_method = "POST"   
-  type                    = "AWS_PROXY"
-  uri                     = var.lambda_arn
-}
 
-# Deployment resource
-resource "aws_api_gateway_deployment" "deployment" {
-  depends_on  = [aws_api_gateway_integration.lambda_integration]
+# =========================================================
+# Lambda Proxy Integration
+# =========================================================
+
+resource "aws_api_gateway_integration" "proxy" {
+  for_each = var.http_methods
+
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  description = "Deployment for the REST API"
+  resource_id = aws_api_gateway_resource.proxy.id
+
+  http_method = aws_api_gateway_method.proxy[each.key].http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.lambda_invoke_arn
 }
 
-# Stage resource
-resource "aws_api_gateway_stage" "dev_stage" {
-  stage_name    = var.stage_name
+
+# =========================================================
+# Deployment
+# =========================================================
+
+resource "aws_api_gateway_deployment" "deployment" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+
+  depends_on = [
+    aws_api_gateway_method.proxy,
+    aws_api_gateway_integration.proxy
+  ]
+
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.proxy.id,
+      aws_api_gateway_method.proxy,
+      aws_api_gateway_integration.proxy
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+
+# =========================================================
+# Stage
+# =========================================================
+
+resource "aws_api_gateway_stage" "stage" {
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id
   deployment_id = aws_api_gateway_deployment.deployment.id
-  }
+  stage_name    = var.stage_name
+
+  tags = var.tags
+}
