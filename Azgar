@@ -1,46 +1,45 @@
-module "aws_lambda" {
-  #depends_on = [module.iam_role]
-  source = "git::ssh://git@bitbucket.org/deluxe-development/aws-lambda.git//?ref=1.0.8"
-  lambdas = [{
-    identifier                        = var.name
-    name                              = var.name
-    description                       = "${var.name} Function"
-    handler                           = var.lambda_handler
-    runtime                           = var.lambda_runtime
-    memory_size                       = var.lambda_memory_size
-    ephemeral_storage_size            = var.lambda_ephemeral_storage_size
-    timeout                           = 900
-    cloudwatch_logs_retention_in_days = var.lambda_logs_retention_in_days
-    iam_role_arn                      = var.iam_role == null ? module.iam_role.iam_role_arn : var.iam_role
-    local_existing_package            = var.package_path
-    kms_key_arn                       = var.lambda_kms
-    vpc_subnet_ids                    = var.vpc_subnet_ids
-    vpc_security_group_ids            = var.vpc_security_group_ids
-    environment_variables             = var.lambda_environment_variables
-    layers = try(coalescelist(var.lambda_layers, var.layers), null)
-    allowed_triggers = var.add_trigger ? {
-      "${var.TypeofTrigger}" = {
-        statement_id = var.statement_id,
-        principal    = var.principal,
-        source_arn   = var.lambda_trigger
-      }
-    } : {}
-    event_source_mapping = try(var.event_source_mapping, [])
-    tags                 = var.tags
-    function_tags        = var.function_tags
-  }]
-}
 
 resource "aws_lambda_permission" "api_gateway_trigger" {
-  count = var.enable_api_gateway_trigger ? 1 : 0
+  for_each = var.enable_api_gateway_trigger ? toset(var.api_gateway_http_methods) : toset([])
 
-  statement_id  = "AllowAPIGatewayInvoke-${var.name}"
+  statement_id  = "AllowAPIGatewayInvoke-${var.name}-${each.key}"
   action        = "lambda:InvokeFunction"
   function_name = var.name
   principal     = "apigateway.amazonaws.com"
 
-  source_arn = "${var.api_gateway_execution_arn}/*/${var.api_gateway_http_method}/${var.api_gateway_resource_path}"
+  source_arn = "${var.api_gateway_execution_arn}/*/${each.key}/*"
 
   depends_on = [module.aws_lambda]
 }
 
+
+
+variable "enable_api_gateway_trigger" {
+  description = "Enable API Gateway permission to invoke Lambda"
+  type        = bool
+  default     = false
+}
+
+variable "api_gateway_execution_arn" {
+  description = "Execution ARN of the API Gateway REST API"
+  type        = string
+  default     = ""
+}
+
+variable "api_gateway_http_methods" {
+  description = "HTTP methods allowed to invoke the Lambda"
+  type        = list(string)
+  default     = ["GET", "POST"]
+}
+
+
+
+# API GATEWAY TRIGGER VARS
+enable_api_gateway_trigger = true
+
+api_gateway_execution_arn = dependency.api-gateway.outputs.execution_arn
+
+api_gateway_http_methods = [
+  "GET",
+  "POST"
+]
