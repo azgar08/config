@@ -1,8 +1,44 @@
-Enable RDS Proxy for RC and PROD environments 
-Create Terragrunt State File Migration Pipeline in Harness
-R360+ CI builds to pull Helm chart from Artifactory instead of Bitbucket - micro-service Services
-RC DR Infrastructure Setup
+resource "aws_api_gateway_rest_api" "rest_api" {
+  name = var.api_name
 
-Customer Appreciation for Exceptional Ownership and Client Support
-Appreciation for Technical Excellence and Collaboration
-DR initiative support & DevOps Excellence
+  endpoint_configuration {
+    types = ["PRIVATE"]
+    ip_address_type = "dualstack"
+  }
+}
+
+resource "aws_api_gateway_resource" "resource" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  parent_id   = aws_api_gateway_rest_api.rest_api.root_resource_id
+  path_part   = "{proxy+}"
+}
+
+resource "aws_api_gateway_method" "method" {
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
+  resource_id   = aws_api_gateway_resource.resource.id
+  http_method   = "GET"             
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "lambda_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.rest_api.id
+  resource_id             = aws_api_gateway_resource.resource.id
+  http_method             = aws_api_gateway_method.method.http_method
+  integration_http_method = "POST"   
+  type                    = "AWS_PROXY"
+  uri                     = var.lambda_arn
+}
+
+# Deployment resource
+resource "aws_api_gateway_deployment" "deployment" {
+  depends_on  = [aws_api_gateway_integration.lambda_integration]
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  description = "Deployment for the REST API"
+}
+
+# Stage resource for "dev" stage
+resource "aws_api_gateway_stage" "dev_stage" {
+  stage_name    = var.stage_name
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
+  deployment_id = aws_api_gateway_deployment.deployment.id
+  }
