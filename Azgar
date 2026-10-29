@@ -1,9 +1,25 @@
-{
-  "Effect": "Allow",
-  "Action": [
-    "glue:StartJobRun"
-  ],
-  "Resource": "arn:aws:glue:us-east-1:697179190149:job/batch-ingestion"
-}
 
+import json
+import os
+import boto3
 
+glue = boto3.client(
+    "glue",
+    region_name=os.environ["REGION"]
+)
+
+def lambda_handler(event, context):
+    job_name = os.environ["GLUE_JOB_NAME"]
+
+    response = glue.start_job_run(
+        JobName=job_name
+    )
+
+    return {
+        "statusCode": 202,
+        "body": json.dumps({
+            "message": "Glue job triggered",
+            "jobName": job_name,
+            "jobRunId": response["JobRunId"]
+        })
+    }
