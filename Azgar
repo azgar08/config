@@ -1,1 +1,39 @@
+      + tags_all              = {
+          + "AccountId"      = "697179190149"
+          + "AppName"        = "RAAS"
+          + "Application"    = "RAAS"
+          + "AwsRegion"      = "us-east-1"
+          + "CostCenter"     = "105057.02.11IT"
+          + "DeploymentTeam" = "DevOps"
+          + "Environment"    = "Development"
+          + "Name"           = "dlx-r360plus-execute-api-vpce-dev"
+          + "TerraformPath"  = "../../DEV/us-east-1/_global/pci-vpc-endpoint"
+        }
+      + vpc_endpoint_type     = "Interface"
+      + vpc_id                = "vpc-0314905232666c292"
+    }
+
+Plan: 2 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + vpc_endpoint_dns_entries           = (known after apply)
+  + vpc_endpoint_id                    = (known after apply)
+  + vpc_endpoint_network_interface_ids = (known after apply)
+  + vpc_endpoint_security_group_id     = (known after apply)
+╷
+│ Warning: Deprecated attribute
+│
+│   on endpoint.tf line 29, in resource "aws_vpc_endpoint" "execute_api":
+│   29:   service_name        = "com.amazonaws.${data.aws_region.current.name}.execute-api"
+│
+│ The attribute "name" is deprecated. Refer to the provider documentation for
+│ details.
+│
+│ (and one more similar warning elsewhere)
+╵
+
+─────────────────────────────────────────────────────────────────────────────
+
+Note: You didn't use the -out option to save this plan, so Terraform can't
+guarantee to take exactly these actions if you run "terraform apply" now.
 subnet_ids = dependency.pci-subnets.outputs.pci_subnet_ids
