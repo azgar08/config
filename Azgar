@@ -1,38 +1,40 @@
-Acquiring state lock. This may take a few moments...
-data.aws_region.current: Reading...
-data.aws_region.current: Read complete after 0s [id=us-east-1]
+locals {
+  environment_var   = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+  environment       = lower(local.environment_var.locals.infra_environment)
+  region_vars       = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  aws_region        = lower(local.region_vars.locals.aws_region)
+  account_vars      = read_terragrunt_config(find_in_parent_folders("account.hcl"))
+  aws_account_id    = lower(local.account_vars.locals.aws_account_id)
+  name              = "dlx-r360plus-execute-api-vpce-${local.environment}"
 
-Planning failed. Terraform encountered an error while generating this plan.
+  source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//vpc-endpoint"
+}
 
-╷
-│ Warning: Deprecated attribute
-│
-│   on endpoint.tf line 29, in resource "aws_vpc_endpoint" "execute_api":
-│   29:   service_name        = "com.amazonaws.${data.aws_region.current.name}.execute-api"
-│
-│ The attribute "name" is deprecated. Refer to the provider documentation for
-│ details.
-╵
-╷
-│ Error: Invalid value for input variable
-│
-│   on variables.tf line 11:
-│   11: variable "subnet_ids" {
-│
-│ Unsuitable value for var.subnet_ids set using the TF_VAR_subnet_ids
-│ environment variable: element 0: string required.
-╵
-╷
-│ Error: Invalid value for input variable
-│
-│   on variables.tf line 21:
-│   21: variable "allowed_client_security_group_ids" {
-│
-│ Unsuitable value for var.allowed_client_security_group_ids set using the
-│ TF_VAR_allowed_client_security_group_ids environment variable: element 0:
-│ string required.
-╵
-Releasing state lock. This may take a few moments...
-time=2026-10-30T17:49:44+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/XIbvM6R6EOHN2WSEL53X0eNb4E4/y8FxD-70anM9R4t27vEIZVVa1Wo prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\_global\pci-vpc-endpoint]
-time=2026-10-30T17:49:44+05:30 level=error msg=1 error occurred:
-        * [C:/Users/T469203/.terragrunt-cache/XIbvM6R6EOHN2WSEL53X0eNb4E4/y8FxD-70anM9R4t27vEIZVVa1Wo] exit status 1
+dependency "vpc-info" {
+  config_path = find_in_parent_folders("_global/vpc-info")
+}
+
+dependency "common-tags" {
+  config_path = find_in_parent_folders("common-tags")
+}
+
+dependency "pci-subnets" {
+  config_path = find_in_parent_folders("_global/pci-subnets")
+}
+
+inputs = {
+  name   = local.name
+  vpc_id = dependency.vpc-info.outputs.vpc_id
+  subnet_ids = [
+    dependency.pci-subnets.outputs.pci_subnet_ids
+  ]
+
+  # Replace with the security group used by your EKS/UI client.
+  allowed_client_security_group_ids = [
+    dependency.vpc-info.outputs.app_subnets
+  ]
+
+  private_dns_enabled = true
+
+  tags = merge(dependency.common-tags.outputs.common_tags, { "TerraformPath" = path_relative_to_include() })
+}
