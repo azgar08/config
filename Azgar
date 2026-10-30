@@ -1,164 +1,38 @@
-```hcl
-data "aws_region" "current" {}
+Acquiring state lock. This may take a few moments...
+data.aws_region.current: Reading...
+data.aws_region.current: Read complete after 0s [id=us-east-1]
 
-resource "aws_security_group" "execute_api_endpoint" {
-  name        = "${var.name}-sg"
-  description = "Allow HTTPS from approved clients to private API Gateway"
-  vpc_id      = var.vpc_id
+Planning failed. Terraform encountered an error while generating this plan.
 
-  ingress {
-    description     = "HTTPS from EKS/UI clients"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = var.allowed_client_security_group_ids
-  }
-
-  egress {
-    description = "HTTPS responses and outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = var.tags
-}
-
-resource "aws_vpc_endpoint" "execute_api" {
-  vpc_id              = var.vpc_id
-  service_name        = "com.amazonaws.${data.aws_region.current.name}.execute-api"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = var.subnet_ids
-  security_group_ids  = [aws_security_group.execute_api_endpoint.id]
-  private_dns_enabled = var.private_dns_enabled
-
-  tags = merge(var.tags, {
-    Name = var.name
-  })
-}
-```
-
-
-
-```hcl
-variable "name" {
-  description = "Name of the API Gateway VPC endpoint"
-  type        = string
-}
-
-variable "vpc_id" {
-  description = "VPC ID obtained from the vpc-info dependency"
-  type        = string
-}
-
-variable "subnet_ids" {
-  description = "Private subnet IDs for the interface endpoint"
-  type        = list(string)
-
-  validation {
-    condition     = length(var.subnet_ids) > 0
-    error_message = "At least one subnet ID must be provided."
-  }
-}
-
-variable "allowed_client_security_group_ids" {
-  description = "Security group IDs allowed to access the endpoint over HTTPS"
-  type        = list(string)
-
-  validation {
-    condition     = length(var.allowed_client_security_group_ids) > 0
-    error_message = "At least one client security group ID must be provided."
-  }
-}
-
-variable "private_dns_enabled" {
-  description = "Enable private DNS for the execute-api endpoint"
-  type        = bool
-  default     = true
-}
-
-variable "tags" {
-  description = "Resource tags"
-  type        = map(string)
-  default     = {}
-}
-```
-
-
-```hcl
-output "vpc_endpoint_id" {
-  description = "ID of the execute-api VPC endpoint"
-  value       = aws_vpc_endpoint.execute_api.id
-}
-
-output "vpc_endpoint_dns_entries" {
-  description = "DNS entries associated with the VPC endpoint"
-  value       = aws_vpc_endpoint.execute_api.dns_entry
-}
-
-output "vpc_endpoint_network_interface_ids" {
-  description = "Network interface IDs for the endpoint"
-  value       = aws_vpc_endpoint.execute_api.network_interface_ids
-}
-
-output "vpc_endpoint_security_group_id" {
-  description = "Security group ID created for the endpoint"
-  value       = aws_security_group.execute_api_endpoint.id
-}
-```
-
-
-```hcl
-locals {
-  account_vars = read_terragrunt_config(
-    find_in_parent_folders("account.hcl")
-  )
-
-  region_vars = read_terragrunt_config(
-    find_in_parent_folders("region.hcl")
-  )
-
-  environment_vars = read_terragrunt_config(
-    find_in_parent_folders("env.hcl")
-  )
-
-  aws_region  = local.region_vars.locals.aws_region
-  environment = lower(local.environment_vars.locals.environment)
-
-  name = "dlx-r360plus-execute-api-vpce-${local.environment}"
-}
-
-dependency "vpc-info" {
-  config_path = find_in_parent_folders("_global/vpc-info")
-}
-
-dependency "common-tags" {
-  config_path = find_in_parent_folders("common-tags")
-}
-
-inputs = {
-  name   = local.name
-  vpc_id = dependency.vpc-info.outputs.vpc_id
-
-  # Replace these placeholders with your existing private subnet IDs.
-  subnet_ids = [
-    "subnet-REPLACE_WITH_PRIVATE_SUBNET_A",
-    "subnet-REPLACE_WITH_PRIVATE_SUBNET_B"
-  ]
-
-  # Replace with the security group used by your EKS/UI client.
-  allowed_client_security_group_ids = [
-    "sg-REPLACE_WITH_EKS_UI_CLIENT_SG"
-  ]
-
-  private_dns_enabled = true
-
-  tags = merge(
-    dependency.common-tags.outputs.common_tags,
-    {
-      TerraformPath = path_relative_to_include()
-    }
-  )
-}
-```
+╷
+│ Warning: Deprecated attribute
+│
+│   on endpoint.tf line 29, in resource "aws_vpc_endpoint" "execute_api":
+│   29:   service_name        = "com.amazonaws.${data.aws_region.current.name}.execute-api"
+│
+│ The attribute "name" is deprecated. Refer to the provider documentation for
+│ details.
+╵
+╷
+│ Error: Invalid value for input variable
+│
+│   on variables.tf line 11:
+│   11: variable "subnet_ids" {
+│
+│ Unsuitable value for var.subnet_ids set using the TF_VAR_subnet_ids
+│ environment variable: element 0: string required.
+╵
+╷
+│ Error: Invalid value for input variable
+│
+│   on variables.tf line 21:
+│   21: variable "allowed_client_security_group_ids" {
+│
+│ Unsuitable value for var.allowed_client_security_group_ids set using the
+│ TF_VAR_allowed_client_security_group_ids environment variable: element 0:
+│ string required.
+╵
+Releasing state lock. This may take a few moments...
+time=2026-10-30T17:49:44+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/XIbvM6R6EOHN2WSEL53X0eNb4E4/y8FxD-70anM9R4t27vEIZVVa1Wo prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\_global\pci-vpc-endpoint]
+time=2026-10-30T17:49:44+05:30 level=error msg=1 error occurred:
+        * [C:/Users/T469203/.terragrunt-cache/XIbvM6R6EOHN2WSEL53X0eNb4E4/y8FxD-70anM9R4t27vEIZVVa1Wo] exit status 1
