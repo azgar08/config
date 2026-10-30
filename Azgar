@@ -1,45 +1,170 @@
-       + "AwsRegion"      = "us-east-1"
-          + "CostCenter"     = "105057.02.11IT"
-          + "DeploymentTeam" = "DevOps"
-          + "Environment"    = "Development"
-          + "TerraformPath"  = "../../DEV/us-east-1/_global/pci-vpc-endpoint"
-        }
-      + tags_all               = {
-          + "AccountId"      = "697179190149"
-          + "AppName"        = "RAAS"
-          + "Application"    = "RAAS"
-          + "AwsRegion"      = "us-east-1"
-          + "CostCenter"     = "105057.02.11IT"
-          + "DeploymentTeam" = "DevOps"
-          + "Environment"    = "Development"
-          + "TerraformPath"  = "../../DEV/us-east-1/_global/pci-vpc-endpoint"
-        }
-      + vpc_id                 = "vpc-0314905232666c292"
+{
+  "version": 4,
+  "terraform_version": "1.5.7",
+  "serial": 1,
+  "lineage": "5b6db724-01ba-cba2-1566-eed424cca754",
+  "outputs": {
+    "pci_subnet_cidrs": {
+      "value": [
+        "10.213.0.0/19",
+        "10.213.32.0/19"
+      ],
+      "type": [
+        "tuple",
+        [
+          "string",
+          "string"
+        ]
+      ]
+    },
+    "pci_subnet_ids": {
+      "value": [
+        "subnet-0778273817e9af1b4",
+        "subnet-0b485b76c736b7bca"
+      ],
+      "type": [
+        "tuple",
+        [
+          "string",
+          "string"
+        ]
+      ]
     }
-
-Plan: 1 to add, 0 to change, 0 to destroy.
-
-Changes to Outputs:
-  + vpc_endpoint_security_group_id = (known after apply)
-╷
-│ Warning: Deprecated attribute
-│
-│   on endpoint.tf line 29, in resource "aws_vpc_endpoint" "execute_api":
-│   29:   service_name        = "com.amazonaws.${data.aws_region.current.name}.execute-api"
-│
-│ The attribute "name" is deprecated. Refer to the provider documentation for
-│ details.
-╵
-╷
-│ Error: Invalid value for input variable
-│
-│   on variables.tf line 11:
-│   11: variable "subnet_ids" {
-│
-│ Unsuitable value for var.subnet_ids set using the TF_VAR_subnet_ids
-│ environment variable: element 0: string required.
-╵
-Releasing state lock. This may take a few moments...
-time=2026-10-30T17:57:44+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/XIbvM6R6EOHN2WSEL53X0eNb4E4/y8FxD-70anM9R4t27vEIZVVa1Wo prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\_global\pci-vpc-endpoint]
-time=2026-10-30T17:57:44+05:30 level=error msg=1 error occurred:
-        * [C:/Users/T469203/.terragrunt-cache/XIbvM6R6EOHN2WSEL53X0eNb4E4/y8FxD-70anM9R4t27vEIZVVa1Wo] exit status 1
+  },
+  "resources": [
+    {
+      "mode": "data",
+      "type": "aws_subnet",
+      "name": "pci",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": "subnet-0778273817e9af1b4",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:697179190149:subnet/subnet-0778273817e9af1b4",
+            "assign_ipv6_address_on_creation": false,
+            "availability_zone": "us-east-1a",
+            "availability_zone_id": "use1-az4",
+            "available_ip_address_count": 8187,
+            "cidr_block": "10.213.0.0/19",
+            "customer_owned_ipv4_pool": "",
+            "default_for_az": false,
+            "enable_dns64": false,
+            "enable_lni_at_device_index": 0,
+            "enable_resource_name_dns_a_record_on_launch": false,
+            "enable_resource_name_dns_aaaa_record_on_launch": false,
+            "filter": null,
+            "id": "subnet-0778273817e9af1b4",
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_block_association_id": "",
+            "ipv6_native": false,
+            "map_customer_owned_ip_on_launch": false,
+            "map_public_ip_on_launch": false,
+            "outpost_arn": "",
+            "owner_id": "697179190149",
+            "private_dns_hostname_type_on_launch": "ip-name",
+            "region": "us-east-1",
+            "state": "available",
+            "tags": {
+              "BudgetCode": "Deluxe",
+              "Dept": "Deluxe",
+              "Name": "GS-RAAS-DEV-NONROUTABLE-Subnet-AZ1",
+              "Owner": "GS-RAAS",
+              "Project": "GS-RAAS",
+              "Role": "Network",
+              "Stack": "DEV",
+              "Tier": "Network",
+              "managed_by": "AFT"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0314905232666c292"
+          },
+          "sensitive_attributes": []
+        },
+        {
+          "index_key": "subnet-0b485b76c736b7bca",
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:697179190149:subnet/subnet-0b485b76c736b7bca",
+            "assign_ipv6_address_on_creation": false,
+            "availability_zone": "us-east-1b",
+            "availability_zone_id": "use1-az6",
+            "available_ip_address_count": 8187,
+            "cidr_block": "10.213.32.0/19",
+            "customer_owned_ipv4_pool": "",
+            "default_for_az": false,
+            "enable_dns64": false,
+            "enable_lni_at_device_index": 0,
+            "enable_resource_name_dns_a_record_on_launch": false,
+            "enable_resource_name_dns_aaaa_record_on_launch": false,
+            "filter": null,
+            "id": "subnet-0b485b76c736b7bca",
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_block_association_id": "",
+            "ipv6_native": false,
+            "map_customer_owned_ip_on_launch": false,
+            "map_public_ip_on_launch": false,
+            "outpost_arn": "",
+            "owner_id": "697179190149",
+            "private_dns_hostname_type_on_launch": "ip-name",
+            "region": "us-east-1",
+            "state": "available",
+            "tags": {
+              "BudgetCode": "Deluxe",
+              "Dept": "Deluxe",
+              "Name": "GS-RAAS-DEV-NONROUTABLE-Subnet-AZ2",
+              "Owner": "GS-RAAS",
+              "Project": "GS-RAAS",
+              "Role": "Network",
+              "Stack": "DEV",
+              "Tier": "Network",
+              "managed_by": "AFT"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0314905232666c292"
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    },
+    {
+      "mode": "data",
+      "type": "aws_subnets",
+      "name": "pci",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "filter": [
+              {
+                "name": "tag:Name",
+                "values": [
+                  "GS-RAAS-DEV-NONROUTABLE-Subnet-AZ1",
+                  "GS-RAAS-DEV-NONROUTABLE-Subnet-AZ2"
+                ]
+              },
+              {
+                "name": "vpc-id",
+                "values": [
+                  "vpc-0314905232666c292"
+                ]
+              }
+            ],
+            "id": "us-east-1",
+            "ids": [
+              "subnet-0778273817e9af1b4",
+              "subnet-0b485b76c736b7bca"
+            ],
+            "region": "us-east-1",
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}
