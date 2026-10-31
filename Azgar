@@ -1,31 +1,11 @@
-aws_api_gateway_rest_api.rest_api: Creating...
-aws_api_gateway_rest_api.rest_api: Creation complete after 5s [id=vnkfymv474]
-aws_api_gateway_resource.proxy: Creating...
-aws_api_gateway_resource.proxy: Creation complete after 0s [id=hj7q91]
-aws_api_gateway_method.proxy["GET"]: Creating...
-aws_api_gateway_method.proxy["POST"]: Creating...
-aws_api_gateway_method.proxy["POST"]: Creation complete after 1s [id=agm-vnkfymv474-hj7q91-POST]
-aws_api_gateway_method.proxy["GET"]: Creation complete after 1s [id=agm-vnkfymv474-hj7q91-GET]
-aws_api_gateway_integration.proxy["POST"]: Creating...
-aws_api_gateway_integration.proxy["GET"]: Creating...
-╷
-│ Error: creating API Gateway Integration: operation error API Gateway: PutIntegration, https response error StatusCode: 400, RequestID: 0928ad4c-444d-487f-9e5c-d0731f9eef19, BadRequestException: AWS ARN for integration must contain path or action
-│
-│   with aws_api_gateway_integration.proxy["GET"],
-│   on api.tf line 53, in resource "aws_api_gateway_integration" "proxy":
-│   53: resource "aws_api_gateway_integration" "proxy" {
-│
-╵
-╷
-│ Error: creating API Gateway Integration: operation error API Gateway: PutIntegration, https response error StatusCode: 400, RequestID: 58c75929-0196-48ca-8c0a-f1c027859ada, BadRequestException: AWS ARN for integration must contain path or action
-│
-│   with aws_api_gateway_integration.proxy["POST"],
-│   on api.tf line 53, in resource "aws_api_gateway_integration" "proxy":
-│   53: resource "aws_api_gateway_integration" "proxy" {
-│
-╵
-Releasing state lock. This may take a few moments...
-time=2026-11-01T02:29:06+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/YEXCALkduY5r8Dlszv7qhG5OfLY/nzPcPsfLcXGMpWZ30GY93GqxqQ4/api-gateway-restapi prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\pci-redaction\api-gateway]
-time=2026-11-01T02:29:06+05:30 level=error msg=1 error occurred:
-        * [C:/Users/T469203/.terragrunt-cache/YEXCALkduY5r8Dlszv7qhG5OfLY/nzPcPsfLcXGMpWZ30GY93GqxqQ4/api-gateway-restapi] exit status 1
+resource "aws_api_gateway_integration" "proxy" {
+  for_each = toset(var.http_methods)
 
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  resource_id = aws_api_gateway_resource.proxy.id
+  http_method = aws_api_gateway_method.proxy[each.key].http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS"
+  uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${var.lambda_invoke_arn}/invocations"
+}
