@@ -1,33 +1,117 @@
-module "dynamodb_table" {
-  source = "git::ssh://git@bitbucket.org/deluxe-development/aws-dynamodb-table.git//?ref=1.0.1"
+variable "name" {
+  description = "DynamoDB table name"
+  type        = string
+}
 
-  name        = var.name
-  hash_key    = var.hash_key
-  range_key   = var.range_key
-  attributes  = var.attributes
-  environment = var.environment
-  region      = var.region
+variable "environment" {
+  description = "Deployment environment"
+  type        = string
+}
 
-  billing_mode = var.billing_mode
+variable "region" {
+  description = "Primary AWS region"
+  type        = string
+}
 
-  point_in_time_recovery_enabled = var.point_in_time_recovery_enabled
+variable "hash_key" {
+  description = "DynamoDB partition key"
+  type        = string
+}
 
-  read_capacity  = var.read_capacity
-  write_capacity = var.write_capacity
+variable "range_key" {
+  description = "DynamoDB sort key; null if not required"
+  type        = string
+  default     = null
+}
 
-  table_class = var.table_class
+variable "attributes" {
+  description = "DynamoDB key attribute definitions"
+  type = list(object({
+    name = string
+    type = string
+  }))
+}
 
-  ttl_enabled        = var.ttl_enabled
-  ttl_attribute_name = var.ttl_attribute_name
+variable "billing_mode" {
+  description = "DynamoDB billing mode"
+  type        = string
+  default     = "PAY_PER_REQUEST"
+}
 
-  stream_enabled   = var.stream_enabled
-  stream_view_type = var.stream_view_type
+variable "read_capacity" {
+  description = "Provisioned read capacity, if supported by the selected billing mode"
+  type        = number
+  default     = 0
+}
 
-  server_side_encryption_enabled     = var.server_side_encryption_enabled
-  server_side_encryption_kms_key_arn = var.server_side_encryption_kms_key_arn
+variable "write_capacity" {
+  description = "Provisioned write capacity, if supported by the selected billing mode"
+  type        = number
+  default     = 0
+}
 
-  # Enable replication only when requested for this environment.
-  replica_regions = var.enable_multi_region ? var.replica_regions : []
+variable "table_class" {
+  description = "DynamoDB table class"
+  type        = string
+  default     = "STANDARD"
+}
 
-  tags = var.tags
+variable "point_in_time_recovery_enabled" {
+  description = "Enable point-in-time recovery"
+  type        = bool
+  default     = true
+}
+
+variable "ttl_enabled" {
+  description = "Enable DynamoDB TTL"
+  type        = bool
+  default     = false
+}
+
+variable "ttl_attribute_name" {
+  description = "TTL attribute name"
+  type        = string
+  default     = "expires_at"
+}
+
+variable "stream_enabled" {
+  description = "Enable DynamoDB Streams"
+  type        = bool
+  default     = false
+}
+
+variable "stream_view_type" {
+  description = "DynamoDB Stream view type"
+  type        = string
+  default     = "NEW_AND_OLD_IMAGES"
+}
+
+variable "server_side_encryption_enabled" {
+  description = "Enable DynamoDB server-side encryption"
+  type        = bool
+  default     = true
+}
+
+variable "server_side_encryption_kms_key_arn" {
+  description = "Customer-managed KMS key ARN; null uses the module/AWS default"
+  type        = string
+  default     = null
+}
+
+variable "enable_multi_region" {
+  description = "Enable DynamoDB Global Tables replication"
+  type        = bool
+  default     = false
+}
+
+variable "replica_regions" {
+  description = "AWS regions for DynamoDB replicas"
+  type        = list(string)
+  default     = []
+}
+
+variable "tags" {
+  description = "Tags applied to the DynamoDB table"
+  type        = map(string)
+  default     = {}
 }
