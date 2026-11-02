@@ -1,122 +1,33 @@
 module "dynamodb_table" {
-  source  =  "git::ssh://git@bitbucket.org/deluxe-development/aws-dynamodb-table.git//?ref=1.0.1"
-  
-  name      = var.name
-  hash_key  = var.hash_key
-  
+  source = "git::ssh://git@bitbucket.org/deluxe-development/aws-dynamodb-table.git//?ref=1.0.1"
+
+  name        = var.name
+  hash_key    = var.hash_key
+  range_key   = var.range_key
   attributes  = var.attributes
   environment = var.environment
-
   region      = var.region
+
   billing_mode = var.billing_mode
-  point_in_time_recovery_enabled = true
-  read_capacity = var.read_capacity
+
+  point_in_time_recovery_enabled = var.point_in_time_recovery_enabled
+
+  read_capacity  = var.read_capacity
   write_capacity = var.write_capacity
-  range_key = var.range_key
-  table_class = "STANDARD"
 
-  ttl_enabled = true
-  ttl_attribute_name = "Timestamp"
-  stream_enabled = var.stream_enabled
+  table_class = var.table_class
+
+  ttl_enabled        = var.ttl_enabled
+  ttl_attribute_name = var.ttl_attribute_name
+
+  stream_enabled   = var.stream_enabled
   stream_view_type = var.stream_view_type
-  server_side_encryption_enabled = true
+
+  server_side_encryption_enabled     = var.server_side_encryption_enabled
   server_side_encryption_kms_key_arn = var.server_side_encryption_kms_key_arn
+
+  # Enable replication only when requested for this environment.
+  replica_regions = var.enable_multi_region ? var.replica_regions : []
+
   tags = var.tags
-  replica_regions = var.replica_regions
-}
-
-#DynamoDB table policy
-resource "aws_dynamodb_resource_policy" "db_policy" {
-  resource_arn = module.dynamodb_table.dynamodb_table_arn 
-  policy =  data.aws_iam_policy_document.table_policy.json
-}
-
-data "aws_iam_policy_document" "table_policy"{
-  dynamic "statement" {
-    for_each = [for s in var.table_policy: {
-      sid = s.sid
-      actions = s.actions
-      effect = s.effect
-      resources = s.resources
-      principals = s.principals
-      condition = s.condition
-    }]
-    content {
-      sid = statement.value.sid
-      actions = statement.value.actions
-      effect = statement.value.effect
-      resources = statement.value.resources
-
-      dynamic "principals" {
-        for_each = [for p in statement.value.principals: {
-          principal_type = p.type
-          principal_identifiers = p.identifiers
-        }]
-        content {
-          type = principals.value.principal_type
-          identifiers = principals.value.principal_identifiers
-        }
-      }
-      dynamic "condition" {
-        for_each = [for c in statement.value.condition: {
-          condition_test = c.test
-          condition_variable = c.variable
-          condition_values = c.values
-        }]
-        content {
-          test = condition.value.condition_test
-          variable = condition.value.condition_variable
-          values = condition.value.condition_values
-        }
-      }
-    }
-  }
-}
-
-#DynamoDB stream policy
-resource "aws_dynamodb_resource_policy" "db_stream_policy" {
-  resource_arn = module.dynamodb_table.dynamodb_table_stream_arn
-  policy =  data.aws_iam_policy_document.stream_policy.json
-}
-
-data "aws_iam_policy_document" "stream_policy"{
-  dynamic "statement" {
-    for_each = [for s in var.stream_policy: {
-      sid = s.sid
-      actions = s.actions
-      effect = s.effect
-      resources = s.resources
-      principals = s.principals
-      condition = s.condition
-    }]
-    content {
-      sid = statement.value.sid
-      actions = statement.value.actions
-      effect = statement.value.effect
-      resources = statement.value.resources
-
-      dynamic "principals" {
-        for_each = [for p in statement.value.principals: {
-          principal_type = p.type
-          principal_identifiers = p.identifiers
-        }]
-        content {
-          type = principals.value.principal_type
-          identifiers = principals.value.principal_identifiers
-        }
-      }
-      dynamic "condition" {
-        for_each = [for c in statement.value.condition: {
-          condition_test = c.test
-          condition_variable = c.variable
-          condition_values = c.values
-        }]
-        content {
-          test = condition.value.condition_test
-          variable = condition.value.condition_variable
-          values = condition.value.condition_values
-        }
-      }
-    }
-  }
 }
