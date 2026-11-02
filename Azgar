@@ -1,58 +1,28 @@
-include {
-  path = find_in_parent_folders()
-  expose = true
-}
+module.eks_cluster_config.null_resource.annotate-service-account (local-exec): (output suppressed due to sensitive value in config)
 
-terraform {
-  source = "../../../stacks/dynamodb"
-}
+module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m10s elapsed]
 
-inputs = {
-  name        = "dlx-pci-dev-batch-audit"
-  environment = "dev"
+module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m10s elapsed]
 
-  region = "<dev-primary-region>"
+module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m20s elapsed]
 
-  # Table key configuration - confirm with developer
-  hash_key  = "<partition-key>"
-  range_key = "<sort-key>"
+module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m20s elapsed]
 
-  attributes = [
-    {
-      name = "<partition-key>"
-      type = "S"
-    },
-    {
-      name = "<sort-key>"
-      type = "S"
-    }
-  ]
+module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m30s elapsed]
 
-  billing_mode = "PAY_PER_REQUEST"
+module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m30s elapsed]
 
-  point_in_time_recovery_enabled = true
+module.eks_cluster_config.null_resource.annotate-service-account (local-exec): (output suppressed due to sensitive value in config)
 
-  read_capacity  = 0
-  write_capacity = 0
+module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m40s elapsed]
 
-  table_class = "STANDARD"
+module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m40s elapsed]
 
-  # Retention settings - confirm with developer
-  ttl_enabled        = false
-  ttl_attribute_name = "<ttl-attribute>"
+module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m50s elapsed]
 
-  stream_enabled   = false
-  stream_view_type = "NEW_AND_OLD_IMAGES"
+module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m50s elapsed]
 
-  server_side_encryption_enabled     = true
-  server_side_encryption_kms_key_arn = null
+module.eks_cluster_config.time_sleep.wait_120_seconds: Creation complete after 2m0s [id=2026-10-30T13:59:27Z]
 
-  # Multi-region settings
-  enable_multi_region = false
+module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [2m0s elapsed]
 
-  replica_regions = [
-    # "<dev-replica-region>"
-  ]
-
-  tags = include.locals.common_tags
-}
