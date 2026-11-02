@@ -1,28 +1,82 @@
-module.eks_cluster_config.null_resource.annotate-service-account (local-exec): (output suppressed due to sensitive value in config)
+# SNS Topic
 
-module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m10s elapsed]
+resource "aws_sns_topic" "glue_failure" {
+  name = "${var.project_name}-${var.environment}-glue-failure-alerts"
 
-module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m10s elapsed]
+  tags = var.tags
+}
 
-module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m20s elapsed]
+# Email Subscriptions
 
-module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m20s elapsed]
+resource "aws_sns_topic_subscription" "email" {
+  for_each = toset(var.notification_emails)
 
-module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m30s elapsed]
+  topic_arn = aws_sns_topic.glue_failure.arn
+  protocol  = "email"
+  endpoint  = each.value
+}
 
-module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m30s elapsed]
+# EventBridge rule
 
-module.eks_cluster_config.null_resource.annotate-service-account (local-exec): (output suppressed due to sensitive value in config)
+resource "aws_cloudwatch_event_rule" "glue_job_failed" {
 
-module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m40s elapsed]
+  name        = "${var.project_name}-${var.environment}-glue-job-failed"
+  description = "Capture Glue Job FAILED events"
 
-module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m40s elapsed]
+  event_pattern = jsonencode({
+    "source" : [
+      "aws.glue"
+    ],
+    "detail-type" : [
+      "Glue Job State Change"
+    ],
+    "detail" : {
+      "state" : [
+        "FAILED"
+      ],
+      "jobName" : var.glue_job_names
+    }
+  })
 
-module.eks_cluster_config.time_sleep.wait_120_seconds: Still creating... [1m50s elapsed]
+  tags = var.tags
+}
 
-module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [1m50s elapsed]
+# EventBridge Target
 
-module.eks_cluster_config.time_sleep.wait_120_seconds: Creation complete after 2m0s [id=2026-10-30T13:59:27Z]
+resource "aws_cloudwatch_event_target" "sns" {
 
-module.eks_cluster_config.null_resource.annotate-service-account: Still creating... [2m0s elapsed]
+  rule = aws_cloudwatch_event_rule.glue_job_failed.name
+  arn  = aws_sns_topic.glue_failure.arn
+}
 
+# Allow EventBridge to publish to SNS
+
+resource "aws_sns_topic_policy" "default" {
+
+  arn = aws_sns_topic.glue_failure.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid    = "AllowEventBridge"
+        Effect = "Allow"
+
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+
+        Action = "sns:Publish"
+
+        Resource = aws_sns_topic.glue_failure.arn
+
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_cloudwatch_event_rule.glue_job_failed.arn
+          }
+        }
+      }
+    ]
+  })
+}
