@@ -1,117 +1,19 @@
-variable "name" {
-  description = "DynamoDB table name"
-  type        = string
+output "dynamodb_table_name" {
+  description = "Configured DynamoDB table name"
+  value       = var.name
 }
 
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
+output "dynamodb_primary_region" {
+  description = "Primary DynamoDB region"
+  value       = var.region
 }
 
-variable "region" {
-  description = "Primary AWS region"
-  type        = string
+output "dynamodb_multi_region_enabled" {
+  description = "Whether multi-region replication is enabled"
+  value       = var.enable_multi_region
 }
 
-variable "hash_key" {
-  description = "DynamoDB partition key"
-  type        = string
-}
-
-variable "range_key" {
-  description = "DynamoDB sort key; null if not required"
-  type        = string
-  default     = null
-}
-
-variable "attributes" {
-  description = "DynamoDB key attribute definitions"
-  type = list(object({
-    name = string
-    type = string
-  }))
-}
-
-variable "billing_mode" {
-  description = "DynamoDB billing mode"
-  type        = string
-  default     = "PAY_PER_REQUEST"
-}
-
-variable "read_capacity" {
-  description = "Provisioned read capacity, if supported by the selected billing mode"
-  type        = number
-  default     = 0
-}
-
-variable "write_capacity" {
-  description = "Provisioned write capacity, if supported by the selected billing mode"
-  type        = number
-  default     = 0
-}
-
-variable "table_class" {
-  description = "DynamoDB table class"
-  type        = string
-  default     = "STANDARD"
-}
-
-variable "point_in_time_recovery_enabled" {
-  description = "Enable point-in-time recovery"
-  type        = bool
-  default     = true
-}
-
-variable "ttl_enabled" {
-  description = "Enable DynamoDB TTL"
-  type        = bool
-  default     = false
-}
-
-variable "ttl_attribute_name" {
-  description = "TTL attribute name"
-  type        = string
-  default     = "expires_at"
-}
-
-variable "stream_enabled" {
-  description = "Enable DynamoDB Streams"
-  type        = bool
-  default     = false
-}
-
-variable "stream_view_type" {
-  description = "DynamoDB Stream view type"
-  type        = string
-  default     = "NEW_AND_OLD_IMAGES"
-}
-
-variable "server_side_encryption_enabled" {
-  description = "Enable DynamoDB server-side encryption"
-  type        = bool
-  default     = true
-}
-
-variable "server_side_encryption_kms_key_arn" {
-  description = "Customer-managed KMS key ARN; null uses the module/AWS default"
-  type        = string
-  default     = null
-}
-
-variable "enable_multi_region" {
-  description = "Enable DynamoDB Global Tables replication"
-  type        = bool
-  default     = false
-}
-
-variable "replica_regions" {
-  description = "AWS regions for DynamoDB replicas"
-  type        = list(string)
-  default     = []
-}
-
-variable "tags" {
-  description = "Tags applied to the DynamoDB table"
-  type        = map(string)
-  default     = {}
+output "dynamodb_replica_regions" {
+  description = "Configured replica regions"
+  value       = var.enable_multi_region ? var.replica_regions : []
 }
