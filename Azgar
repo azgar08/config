@@ -1,153 +1,149 @@
 
-locals {
-  table_name = "${var.name}-${var.region}-${var.environment}"
-
-  table_arn = "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/${local.table_name}"
+variable "name" {
+  description = "Base DynamoDB table name"
+  type        = string
 }
 
-data "aws_caller_identity" "current" {}
-
-# DynamoDB table
-
-resource "aws_dynamodb_table" "this" {
-  name         = local.table_name
-  billing_mode = var.billing_mode
-
-  hash_key  = var.hash_key
-  range_key = var.range_key
-
-  table_class = var.table_class
-
-  dynamic "attribute" {
-    for_each = var.attributes
-
-    content {
-      name = attribute.value.name
-      type = attribute.value.type
-    }
-  }
-
-  dynamic "global_secondary_index" {
-    for_each = var.global_secondary_indexes
-
-    content {
-      name            = global_secondary_index.value.name
-      hash_key        = global_secondary_index.value.hash_key
-      range_key       = global_secondary_index.value.range_key
-      projection_type = global_secondary_index.value.projection_type
-    }
-  }
-
-  point_in_time_recovery {
-    enabled = var.point_in_time_recovery_enabled
-  }
-
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = var.server_side_encryption_kms_key_arn
-  }
-
-  ttl {
-    enabled        = var.ttl_enabled
-    attribute_name = var.ttl_attribute_name
-  }
-
-  stream_enabled   = var.stream_enabled
-  stream_view_type = var.stream_enabled ? var.stream_view_type : null
-
-  deletion_protection_enabled = var.deletion_protection_enabled
-
-  tags = merge(var.tags, {
-    Name = local.table_name
-  })
+variable "environment" {
+  type = string
 }
 
-# Table resource policy document
+variable "region" {
+  type = string
+}
 
-data "aws_iam_policy_document" "table_policy" {
-  count = length(var.table_policy) > 0 ? 1 : 0
+variable "hash_key" {
+  description = "DynamoDB partition key"
+  type        = string
+}
 
-  dynamic "statement" {
-    for_each = var.table_policy
+variable "range_key" {
+  description = "DynamoDB sort key"
+  type        = string
+  default     = null
+}
 
-    content {
-      sid       = statement.value.sid
-      effect    = statement.value.effect
-      actions   = statement.value.actions
-      resources = statement.value.resources
+variable "billing_mode" {
+  description = "DynamoDB billing mode"
+  type        = string
+  default     = "PAY_PER_REQUEST"
 
-      dynamic "principals" {
-        for_each = statement.value.principals
-
-        content {
-          type        = principals.value.type
-          identifiers = principals.value.identifiers
-        }
-      }
-
-      dynamic "condition" {
-        for_each = statement.value.condition
-
-        content {
-          test     = condition.value.test
-          variable = condition.value.variable
-          values   = condition.value.values
-        }
-      }
-    }
+  validation {
+    condition     = contains(["PAY_PER_REQUEST", "PROVISIONED"], var.billing_mode)
+    error_message = "billing_mode must be PAY_PER_REQUEST or PROVISIONED."
   }
 }
 
-# Attach table resource policy
-
-resource "aws_dynamodb_resource_policy" "table_policy" {
-  count = length(var.table_policy) > 0 ? 1 : 0
-
-  resource_arn = aws_dynamodb_table.this.arn
-  policy       = data.aws_iam_policy_document.table_policy[0].json
+variable "table_class" {
+  type    = string
+  default = "STANDARD"
 }
 
-# Stream resource policy document
+variable "attributes" {
+  description = "DynamoDB table and index key attributes"
 
-data "aws_iam_policy_document" "stream_policy" {
-  count = var.stream_enabled && length(var.stream_policy) > 0 ? 1 : 0
-
-  dynamic "statement" {
-    for_each = var.stream_policy
-
-    content {
-      sid       = statement.value.sid
-      effect    = statement.value.effect
-      actions   = statement.value.actions
-      resources = statement.value.resources
-
-      dynamic "principals" {
-        for_each = statement.value.principals
-
-        content {
-          type        = principals.value.type
-          identifiers = principals.value.identifiers
-        }
-      }
-
-      dynamic "condition" {
-        for_each = statement.value.condition
-
-        content {
-          test     = condition.value.test
-          variable = condition.value.variable
-          values   = condition.value.values
-        }
-      }
-    }
-  }
+  type = list(object({
+    name = string
+    type = string
+  }))
 }
 
-# Attach stream resource policy
+variable "global_secondary_indexes" {
+  description = "DynamoDB global secondary indexes"
 
-resource "aws_dynamodb_resource_policy" "stream_policy" {
-  count = var.stream_enabled && length(var.stream_policy) > 0 ? 1 : 0
+  type = list(object({
+    name            = string
+    hash_key        = string
+    range_key       = optional(string, null)
+    projection_type = string
+  }))
 
-  resource_arn = aws_dynamodb_table.this.stream_arn
-  policy       = data.aws_iam_policy_document.stream_policy[0].json
+  default = []
+}
+
+variable "point_in_time_recovery_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "ttl_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "ttl_attribute_name" {
+  type    = string
+  default = "Timestamp"
+}
+
+variable "stream_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "stream_view_type" {
+  type    = string
+  default = "NEW_AND_OLD_IMAGES"
+}
+
+variable "server_side_encryption_kms_key_arn" {
+  type = string
+}
+
+variable "deletion_protection_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+
+variable "table_policy" {
+  description = "DynamoDB table resource policy statements"
+
+  type = list(object({
+    sid       = string
+    effect    = string
+    actions   = list(string)
+    resources = list(string)
+
+    principals = list(object({
+      type        = string
+      identifiers = list(string)
+    }))
+
+    condition = list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    }))
+  }))
+
+  default = []
+}
+
+variable "stream_policy" {
+  description = "DynamoDB stream resource policy statements"
+
+  type = list(object({
+    sid       = string
+    effect    = string
+    actions   = list(string)
+    resources = list(string)
+
+    principals = list(object({
+      type        = string
+      identifiers = list(string)
+    }))
+
+    condition = list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    }))
+  }))
+
+  default = []
 }
