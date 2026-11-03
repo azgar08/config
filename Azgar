@@ -1,181 +1,155 @@
-Issue Raw Details
-{2 items
-"_rawCodeFlows":[1 item
-0:{1 item
-"threadFlows":[1 item
-0:{1 item
-"locations":[11 items
-0:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
+
+locals {
+  table_name = "${var.table_name}"
+
+  table_arn = "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/${local.table_name}"
 }
-"region":{3 items
-"endColumn":18
-"startColumn":13
-"startLine":134
+
+data "aws_caller_identity" "current" {}
+
+# DynamoDB table
+
+resource "aws_dynamodb_table" "this" {
+  name         = local.table_name
+  billing_mode = var.billing_mode
+
+  hash_key  = var.hash_key
+  range_key = var.range_key
+
+  table_class = var.table_class
+
+  dynamic "attribute" {
+    for_each = var.attributes
+
+    content {
+      name = attribute.value.name
+      type = attribute.value.type
+    }
+  }
+
+  dynamic "global_secondary_index" {
+    for_each = var.global_secondary_indexes
+
+    content {
+      name            = global_secondary_index.value.name
+      hash_key        = global_secondary_index.value.hash_key
+      range_key       = global_secondary_index.value.range_key
+      projection_type = global_secondary_index.value.projection_type
+    }
+  }
+
+  point_in_time_recovery {
+    enabled = var.point_in_time_recovery_enabled
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = var.server_side_encryption_kms_key_arn
+  }
+
+  ttl {
+    enabled        = var.ttl_enabled
+    attribute_name = var.ttl_attribute_name
+  }
+
+  stream_enabled   = var.stream_enabled
+  stream_view_type = var.stream_enabled ? var.stream_view_type : null
+
+  deletion_protection_enabled = var.deletion_protection_enabled
+
+  tags = merge(var.tags, {
+    Name = local.table_name
+  })
 }
+
+# Table resource policy document
+
+# Table resource policy document
+
+data "aws_iam_policy_document" "table_policy" {
+  count = length(var.table_policy) > 0 ? 1 : 0
+
+  dynamic "statement" {
+    for_each = var.table_policy
+
+    content {
+      sid       = statement.value.sid
+      effect    = statement.value.effect
+      actions   = statement.value.actions
+      resources = statement.value.resources
+
+      dynamic "principals" {
+        for_each = statement.value.principals
+
+        content {
+          type        = principals.value.type
+          identifiers = principals.value.identifiers
+        }
+      }
+
+      dynamic "condition" {
+        for_each = statement.value.condition
+
+        content {
+          test     = condition.value.test
+          variable = condition.value.variable
+          values   = condition.value.values
+        }
+      }
+    }
+  }
 }
+
+# Attach table resource policy
+
+resource "aws_dynamodb_resource_policy" "table_policy" {
+  count = length(var.table_policy) > 0 ? 1 : 0
+
+  resource_arn = aws_dynamodb_table.this.arn
+  policy       = data.aws_iam_policy_document.table_policy[0].json
 }
+
+# Stream resource policy document
+
+data "aws_iam_policy_document" "stream_policy" {
+  count = var.stream_enabled && length(var.stream_policy) > 0 ? 1 : 0
+
+  dynamic "statement" {
+    for_each = var.stream_policy
+
+    content {
+      sid       = statement.value.sid
+      effect    = statement.value.effect
+      actions   = statement.value.actions
+      resources = [aws_dynamodb_table.this.stream_arn]
+
+      dynamic "principals" {
+        for_each = statement.value.principals
+
+        content {
+          type        = principals.value.type
+          identifiers = principals.value.identifiers
+        }
+      }
+
+      dynamic "condition" {
+        for_each = statement.value.condition
+
+        content {
+          test     = condition.value.test
+          variable = condition.value.variable
+          values   = condition.value.values
+        }
+      }
+    }
+  }
 }
-1:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":25
-"startColumn":20
-"startLine":144
-}
-}
-}
-}
-2:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":17
-"startColumn":13
-"startLine":144
-}
-}
-}
-}
-3:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":24
-"startColumn":20
-"startLine":153
-}
-}
-}
-}
-4:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":30
-"startColumn":26
-"startLine":154
-}
-}
-}
-}
-5:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":17
-"startColumn":13
-"startLine":161
-}
-}
-}
-}
-6:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":21
-"startColumn":18
-"startLine":161
-}
-}
-}
-}
-7:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":56
-"startColumn":52
-"startLine":68
-}
-}
-}
-}
-8:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":21
-"startColumn":17
-"startLine":75
-}
-}
-}
-}
-9:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":15
-"startColumn":9
-"startLine":75
-}
-}
-}
-}
-10:{1 item
-"location":{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":34
-"startColumn":26
-"startLine":71
-}
-}
-}
-}
-]
-}
-]
-}
-]
-"_rawLocations":[1 item
-0:{1 item
-"physicalLocation":{2 items
-"artifactLocation":{1 item
-"uri":"lambda/batch-initiator/src/start_lambda.py"
-}
-"region":{3 items
-"endColumn":18
-"startColumn":13
-"startLine":134
-}
-}
-}
-]
+
+# Attach stream resource policy
+
+resource "aws_dynamodb_resource_policy" "stream_policy" {
+  count = var.stream_enabled && length(var.stream_policy) > 0 ? 1 : 0
+
+  resource_arn = aws_dynamodb_table.this.stream_arn
+  policy       = data.aws_iam_policy_document.stream_policy[0].json
 }
