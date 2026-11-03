@@ -1,25 +1,4 @@
-stream_policy = [
-  {
-    sid    = "BatchInitiatorStreamAccess"
-    effect = "Allow"
+resources = [aws_dynamodb_table.this.stream_arn]
 
-    principals = [
-      {
-        type = "AWS"
-        identifiers = [
-          "arn:aws:iam::697179190149:role/dlx-r360plus-redaction-batch-initiator-lambda-dev-role",
-          "arn:aws:iam::697179190149:role/dlx-r360plus-batch-processor-glue-dev-role"
-        ]
-      }
-    ]
 
-    actions = [
-      "dynamodb:DescribeStream",
-      "dynamodb:GetRecords",
-      "dynamodb:GetShardIterator"
-    ]
-
-    resources = []
-    condition = []
-  }
-]
+resources = statement.value.resources
