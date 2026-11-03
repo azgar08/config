@@ -1,129 +1,111 @@
-module "dynamodb_table" {
-  source = "git::ssh://git@bitbucket.org/deluxe-development/aws-dynamodb-table.git//?ref=1.0.1"
-
-  name        = var.name
-  hash_key    = var.hash_key
-  range_key   = var.range_key
-
-  attributes  = var.attributes
-  environment = var.environment
-
-  region       = var.region
-  billing_mode = var.billing_mode
-
-  point_in_time_recovery_enabled = true
-
-  read_capacity  = var.read_capacity
-  write_capacity = var.write_capacity
-
-  table_class = "STANDARD"
-
-  # TTL
-  ttl_enabled        = true
-  ttl_attribute_name = "Timestamp"
-
-  # Streams
-  stream_enabled   = var.stream_enabled
-  stream_view_type = var.stream_view_type
-
-  # Encryption
-  server_side_encryption_enabled     = true
-  server_side_encryption_kms_key_arn = var.server_side_encryption_kms_key_arn
-
-  # GSI configuration
-  global_secondary_indexes = [
-    {
-      name            = "GSI_Status"
-      hash_key        = "status"
-      range_key       = null
-      projection_type = "ALL"
-    },
-    {
-      name            = "GSI_Ingestion_Date"
-      hash_key        = "entity_type"
-      range_key       = "ingestionDate"
-      projection_type = "ALL"
-    }
-  ]
-
-  tags            = var.tags
-  replica_regions = var.replica_regions
+variable "name" {
+  type = string
 }
 
-# DynamoDB table policy
-resource "aws_dynamodb_resource_policy" "db_policy" {
-  resource_arn = module.dynamodb_table.dynamodb_table_arn
-  policy       = data.aws_iam_policy_document.table_policy.json
+variable "hash_key" {
+  type = string
 }
 
-data "aws_iam_policy_document" "table_policy" {
-  dynamic "statement" {
-    for_each = var.table_policy
-
-    content {
-      sid       = statement.value.sid
-      actions   = statement.value.actions
-      effect    = statement.value.effect
-      resources = statement.value.resources
-
-      dynamic "principals" {
-        for_each = statement.value.principals
-
-        content {
-          type        = principals.value.type
-          identifiers = principals.value.identifiers
-        }
-      }
-
-      dynamic "condition" {
-        for_each = statement.value.condition
-
-        content {
-          test     = condition.value.test
-          variable = condition.value.variable
-          values   = condition.value.values
-        }
-      }
-    }
-  }
+variable "range_key" {
+  type    = string
+  default = null
 }
 
-# DynamoDB stream policy
-data "aws_iam_policy_document" "stream_policy" {
-  dynamic "statement" {
-    for_each = var.stream_policy
-
-    content {
-      sid       = statement.value.sid
-      actions   = statement.value.actions
-      effect    = statement.value.effect
-      resources = statement.value.resources
-
-      dynamic "principals" {
-        for_each = statement.value.principals
-
-        content {
-          type        = principals.value.type
-          identifiers = principals.value.identifiers
-        }
-      }
-
-      dynamic "condition" {
-        for_each = statement.value.condition
-
-        content {
-          test     = condition.value.test
-          variable = condition.value.variable
-          values   = condition.value.values
-        }
-      }
-    }
-  }
+variable "attributes" {
+  type = list(object({
+    name = string
+    type = string
+  }))
 }
 
-resource "aws_dynamodb_resource_policy" "db_stream_policy" {
-  count = var.stream_enabled ? 1 : 0
+variable "environment" {
+  type = string
+}
 
-  resource_arn = module.dynamodb_table.dynamodb_table_stream_arn
-  policy       = data.aws_iam_policy_document.stream_policy.json
+variable "region" {
+  type = string
+}
+
+variable "billing_mode" {
+  type    = string
+  default = "PAY_PER_REQUEST"
+}
+
+variable "read_capacity" {
+  type    = number
+  default = null
+}
+
+variable "write_capacity" {
+  type    = number
+  default = null
+}
+
+variable "stream_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "stream_view_type" {
+  type    = string
+  default = "NEW_AND_OLD_IMAGES"
+}
+
+variable "server_side_encryption_kms_key_arn" {
+  type    = string
+  default = null
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+
+variable "replica_regions" {
+  type    = list(string)
+  default = []
+}
+
+variable "table_policy" {
+  type = list(object({
+    sid       = optional(string)
+    actions   = list(string)
+    effect    = string
+    resources = list(string)
+
+    principals = list(object({
+      type        = string
+      identifiers = list(string)
+    }))
+
+    condition = optional(list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    })), [])
+  }))
+
+  default = []
+}
+
+variable "stream_policy" {
+  type = list(object({
+    sid       = optional(string)
+    actions   = list(string)
+    effect    = string
+    resources = list(string)
+
+    principals = list(object({
+      type        = string
+      identifiers = list(string)
+    }))
+
+    condition = optional(list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    })), [])
+  }))
+
+  default = []
 }
