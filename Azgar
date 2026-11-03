@@ -1,111 +1,15 @@
-variable "name" {
-  type = string
+output "dynamodb_table_name" {
+  value = module.dynamodb_table.dynamodb_table_name
 }
 
-variable "hash_key" {
-  type = string
+output "dynamodb_table_arn" {
+  value = module.dynamodb_table.dynamodb_table_arn
 }
 
-variable "range_key" {
-  type    = string
-  default = null
+output "dynamodb_table_id" {
+  value = module.dynamodb_table.dynamodb_table_id
 }
 
-variable "attributes" {
-  type = list(object({
-    name = string
-    type = string
-  }))
-}
-
-variable "environment" {
-  type = string
-}
-
-variable "region" {
-  type = string
-}
-
-variable "billing_mode" {
-  type    = string
-  default = "PAY_PER_REQUEST"
-}
-
-variable "read_capacity" {
-  type    = number
-  default = null
-}
-
-variable "write_capacity" {
-  type    = number
-  default = null
-}
-
-variable "stream_enabled" {
-  type    = bool
-  default = true
-}
-
-variable "stream_view_type" {
-  type    = string
-  default = "NEW_AND_OLD_IMAGES"
-}
-
-variable "server_side_encryption_kms_key_arn" {
-  type    = string
-  default = null
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
-
-variable "replica_regions" {
-  type    = list(string)
-  default = []
-}
-
-variable "table_policy" {
-  type = list(object({
-    sid       = optional(string)
-    actions   = list(string)
-    effect    = string
-    resources = list(string)
-
-    principals = list(object({
-      type        = string
-      identifiers = list(string)
-    }))
-
-    condition = optional(list(object({
-      test     = string
-      variable = string
-      values   = list(string)
-    })), [])
-  }))
-
-  default = []
-}
-
-variable "stream_policy" {
-  type = list(object({
-    sid       = optional(string)
-    actions   = list(string)
-    effect    = string
-    resources = list(string)
-
-    principals = list(object({
-      type        = string
-      identifiers = list(string)
-    }))
-
-    condition = optional(list(object({
-      test     = string
-      variable = string
-      values   = list(string)
-    })), [])
-  }))
-
-  default = []
+output "dynamodb_stream_arn" {
+  value = module.dynamodb_table.dynamodb_table_stream_arn
 }
