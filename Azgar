@@ -1,6 +1,6 @@
-table_policy = [
+stream_policy = [
   {
-    sid    = "BatchInitiatorTableAccess"
+    sid    = "BatchInitiatorStreamAccess"
     effect = "Allow"
 
     principals = [
@@ -14,43 +14,12 @@ table_policy = [
     ]
 
     actions = [
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:BatchGetItem",
-      "dynamodb:BatchWriteItem"
+      "dynamodb:DescribeStream",
+      "dynamodb:GetRecords",
+      "dynamodb:GetShardIterator"
     ]
 
-    resources = [
-      local.table_arn
-    ]
-
-    condition = []
-  },
-  {
-    sid    = "BatchInitiatorQueryAccess"
-    effect = "Allow"
-
-    principals = [
-      {
-        type = "AWS"
-        identifiers = [
-          "arn:aws:iam::697179190149:role/dlx-r360plus-redaction-batch-initiator-lambda-dev-role",
-          "arn:aws:iam::697179190149:role/dlx-r360plus-batch-processor-glue-dev-role"
-        ]
-      }
-    ]
-
-    actions = [
-      "dynamodb:Query"
-    ]
-
-    resources = [
-      local.table_arn,
-      "${local.table_arn}/index/GSI_Status",
-      "${local.table_arn}/index/GSI_Ingestion_Date"
-    ]
-
+    resources = []
     condition = []
   }
 ]
