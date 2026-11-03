@@ -1,8 +1,23 @@
-# Retrieve DynamoDB table details
-data "aws_dynamodb_table" "this" {
-  name = var.name
+# DynamoDB Table Name
+output "dynamodb_table_name" {
+  description = "DynamoDB table name"
+  value       = data.aws_dynamodb_table.this.name
+}
 
-  depends_on = [
-    module.dynamodb_table
-  ]
+# DynamoDB Table ARN
+output "dynamodb_table_arn" {
+  description = "DynamoDB table ARN"
+  value       = module.dynamodb_table.dynamodb_table_arn
+}
+
+# DynamoDB Table ID
+output "dynamodb_table_id" {
+  description = "DynamoDB table ID"
+  value       = data.aws_dynamodb_table.this.id
+}
+
+# DynamoDB Stream ARN
+output "dynamodb_stream_arn" {
+  description = "DynamoDB stream ARN"
+  value       = module.dynamodb_table.dynamodb_table_stream_arn
 }
