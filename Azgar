@@ -1,154 +1,197 @@
-Plugin entrypoint specified
--------------------- STO Plugin [START] --------------------
-
-STO Plugin [v1.108.0-1791286811] (run_strategy=docker-in-docker)
-
------------------ CA File Register [START] -----------------
-
-Looking for certificates in /shared/customer_artifacts/certificates
-
----------------- CA Folder Contents [START] ----------------
-
-total 0
-
-drwxr-xr-x. 2 root root  6 Oct  6 08:57 .
-
-drwxr-xr-x. 1 root root 42 Oct  6 08:58 ..
-
------------------ CA Folder Contents [END] -----------------
-
-Successfully updated certificates
-
------------------- CA File Register [END] ------------------
-
------------------ STO Plugin Setup [START] -----------------
-
-SSL Verification is enabled
-
-SSL Verification is enabled
-
-Target scan_type: [repository]
-
-Target name: [deluxe-development/RaaS/raas-pciredactionbackend]
-
-Target variant: [RAAS-57559-ML_Code]
-
-Starting setup for product [checkmarx]
-
-Found matching product config [('repository', 'default')]
-
------------------- STO Plugin Setup [END] ------------------
-
------------------- Process Issues [START] ------------------
-
-Found SARIF results file with version 2.1.0
-
-Number of raw issues extracted: 41
-
-Count after normalization: 41
-
-Count after deduplication: 6
-
-Deduplicated by: [85.37%]
-
-Starting issue upload
-
-Issue upload complete
-
-------------------- Process Issues [END] -------------------
-
-Scan Results: {
-
-    "jobId": "Qe1kK4Rb0x_uDHIvATG7r4",
-
-    "status": "Succeeded",
-
-    "issuesCount": 6,
-
-    "newIssuesCount": 6,
-
-    "issuesBySeverityCount": {
-
-        "ExternalPolicyFailures": 0,
-
-        "NewCritical": 1,
-
-        "NewHigh": 0,
-
-        "NewMedium": 1,
-
-        "NewLow": 4,
-
-        "NewInfo": 0,
-
-        "Unassigned": 0,
-
-        "NewUnassigned": 0,
-
-        "Critical": 1,
-
-        "High": 0,
-
-        "Medium": 1,
-
-        "Low": 4,
-
-        "Info": 0,
-
-        "Ignored": 0,
-
-        "NewIgnoredCritical": 0,
-
-        "NewIgnoredHigh": 0,
-
-        "NewIgnoredMedium": 0,
-
-        "NewIgnoredLow": 0,
-
-        "NewIgnoredInfo": 0,
-
-        "NewIgnoredUnassigned": 0,
-
-        "IgnoredCritical": 0,
-
-        "IgnoredHigh": 0,
-
-        "IgnoredMedium": 0,
-
-        "IgnoredLow": 0,
-
-        "IgnoredInfo": 0,
-
-        "IgnoredUnassigned": 0,
-
-        "NewOccurrencesCritical": 1,
-
-        "NewOccurrencesHigh": 0,
-
-        "NewOccurrencesMedium": 3,
-
-        "NewOccurrencesLow": 37,
-
-        "NewOccurrencesInfo": 0,
-
-        "NewOccurrencesUnassigned": 0,
-
-        "NewIgnoredOccurrencesCritical": 0,
-
-        "NewIgnoredOccurrencesHigh": 0,
-
-        "NewIgnoredOccurrencesMedium": 0,
-
-        "NewIgnoredOccurrencesLow": 0,
-
-        "NewIgnoredOccurrencesInfo": 0,
-
-        "NewIgnoredOccurrencesUnassigned": 0
-
+"""Lambda trigger for the PCI redaction Glue job."""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+import boto3
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+GLUE_JOB_NAME = os.environ.get("GLUE_JOB_NAME", "credit-card-redaction")
+IMAGE_TRACKING_TABLE = os.environ.get("IMAGE_TRACKING_TABLE", "redact_image_metadata")
+BATCH_METADATA_TABLE = os.environ.get("BATCH_METADATA_TABLE", "redact_batch_metadata")
+ACTION_HISTORY_TABLE = os.environ.get("ACTION_HISTORY_TABLE", "redact_ui_batch_action_history")
+REGION = os.environ.get("REGION", os.environ.get("AWS_REGION", "us-east-1"))
+
+glue_client = boto3.client("glue", region_name=REGION)
+dynamodb = boto3.resource("dynamodb", region_name=REGION)
+batch_table = dynamodb.Table(BATCH_METADATA_TABLE)
+action_history_table = dynamodb.Table(ACTION_HISTORY_TABLE)
+
+
+def generate_batch_id() -> str:
+    """Generate a unique batch ID when the caller does not provide one."""
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return f"batch_{today}_{uuid.uuid4().hex[:8]}"
+
+
+def create_batch_record(batch_id: str, request: dict, ingestion_date: str) -> dict:
+    """Create the initial batch item using the batchID/ingestionDate key."""
+    now = datetime.now(timezone.utc).isoformat()
+    raw_bucket = request["rawBucket"]
+    raw_prefix = request.get("rawPrefix", "")
+    record = {
+        "batchID": batch_id,
+        "ingestionDate": ingestion_date,
+        "currentAssignee": request.get("currentAssignee", "Unassigned"),
+        "imageCount": 0,
+        "highConfRedactedCount": 0,
+        "needReviewCount": 0,
+        "errorCount": 0,
+        "reviewCompleted": 0,
+        "noPCICount": 0,
+        "fromSourceTime": request.get("fromSourceTime", ""),
+        "toSourceTime": request.get("toSourceTime", ""),
+        "fromRowNumber": int(request.get("fromRowNumber", 0)),
+        "toRowNumber": int(request.get("toRowNumber", 0)),
+        "status": "Initiated",
+        "s3Location": f"s3://{raw_bucket}/{raw_prefix}".rstrip("/"),
+        "entity_type": "IMAGE",
+        "initiatedTime": now,
+        "ingestionStartTime": request.get("ingestionTime", ""),
+        "ingestionCompleteTime": "",
+        "processingStartTime": "",
+        "processingCompleteTime": "",
+        "publishingStartTime": "",
+        "publishingEndTime": "",
     }
+    batch_table.put_item(Item=record)
+    return record
 
-}
 
---------------------- STO Plugin [END] ---------------------
+def log_action_history(batch_id: str, action: str, user: str, details: str = "") -> None:
+    """Add an entry to the action history table."""
+    now = datetime.now(timezone.utc).isoformat()
+    action_history_table.put_item(Item={
+        "batchID": batch_id,
+        "actionTimestamp": now,
+        "action": action,
+        "user": user,
+        "details": details,
+    })
 
-Exited with message: fail_on_severity is set to high and that threshold was reached.
+
+def start_glue_job(batch_id: str, ingestion_date: str, request: dict) -> str:
+    """Start the Glue job with the normalized batch parameters."""
+    arguments = {
+        "--RAW_BUCKET": request["rawBucket"],
+        "--RAW_PREFIX": request.get("rawPrefix", ""),
+        "--GOLDEN_BUCKET": request["goldenBucket"],
+        "--GOLDEN_PREFIX": request.get("goldenPrefix", "redacted/"),
+        "--IMAGE_TRACKING_TABLE": IMAGE_TRACKING_TABLE,
+        "--BATCH_METADATA_TABLE": BATCH_METADATA_TABLE,
+        "--REGION": REGION,
+        "--MIN_CONFIDENCE": str(request.get("minConfidence", 30)),
+        "--MAX_IMAGES": str(request.get("maxImages", 0)),
+        "--DEBUG_LABELS": str(request.get("debugLabels", "false")).lower(),
+        "--FORCE_REPROCESS": str(request.get("forceReprocess", "false")).lower(),
+        "--VERIFY_REDACTION": str(request.get("verifyRedaction", "true")).lower(),
+        "--BATCH_ID": batch_id,
+        "--CURRENT_ASSIGNEE": request.get("currentAssignee", "Unassigned"),
+        "--INGESTION_DATE": ingestion_date,
+        "--INGESTION_TIME": request.get("ingestionTime", ""),
+        "--FROM_SOURCE_TIME": request.get("fromSourceTime", ""),
+        "--TO_SOURCE_TIME": request.get("toSourceTime", ""),
+        "--FROM_ROW_NUMBER": str(request.get("fromRowNumber", 0)),
+        "--TO_ROW_NUMBER": str(request.get("toRowNumber", 0)),
+    }
+    response = glue_client.start_job_run(JobName=GLUE_JOB_NAME, Arguments=arguments)
+    return response["JobRunId"]
+
+
+def update_batch_status(
+    batch_id: str, ingestion_date: str, status: str,
+) -> None:
+    """Update status using the batch table's complete composite key."""
+    batch_table.update_item(
+        Key={"batchID": batch_id, "ingestionDate": ingestion_date},
+        UpdateExpression="SET #st = :status",
+        ExpressionAttributeNames={"#st": "status"},
+        ExpressionAttributeValues={":status": status},
+    )
+
+
+def mark_batch_failed(
+    batch_id: str, ingestion_date: str, user: str, error_message: str,
+) -> None:
+    """Best-effort: mark a batch that could not be started as Error."""
+    try:
+        update_batch_status(batch_id, ingestion_date, "Error")
+    except Exception:
+        logger.exception("Failed to mark batch %s as Error", batch_id)
+    try:
+        log_action_history(batch_id, "BATCH_TRIGGER_FAILED", user, error_message)
+    except Exception:
+        logger.exception("Failed to write failure history for batch %s", batch_id)
+
+
+def handler(event: dict, context: Any) -> dict:
+    """Create the batch record and start Glue."""
+    batch_id = None
+    ingestion_date = ""
+    batch_created = False
+    body: dict = {}
+    try:
+        if "body" in event:
+            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
+        else:
+            body = event
+
+        for field in ("rawBucket", "goldenBucket"):
+            if field not in body:
+                return {
+                    "statusCode": 400,
+                    "body": json.dumps({"error": f"Missing required field: {field}"}),
+                }
+
+        batch_id = body.get("batchID") or generate_batch_id()
+        ingestion_date = body.get("ingestionDate") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        create_batch_record(batch_id, body, ingestion_date)
+        batch_created = True
+        log_action_history(
+            batch_id,
+            "BATCH_INITIATED",
+            body.get("currentAssignee", "system"),
+            "Batch initiated by Lambda trigger",
+        )
+
+        # Glue owns subsequent Ingested/Processing/final status transitions.
+        job_run_id = start_glue_job(batch_id, ingestion_date, body)
+        logger.info("Started Glue job %s, JobRunId=%s, BatchID=%s", GLUE_JOB_NAME, job_run_id, batch_id)
+
+        return {
+            "statusCode": 200,
+            "body": json.dumps({
+                "batchID": batch_id,
+                "jobRunId": job_run_id,
+                "glueJobName": GLUE_JOB_NAME,
+                "status": "Initiated",
+                "message": "Glue job started successfully",
+            }),
+        }
+    except glue_client.exceptions.ConcurrentRunsExceededException as exc:
+        logger.warning("Glue job %s is at its concurrent run limit: %s", GLUE_JOB_NAME, exc)
+        if batch_created:
+            mark_batch_failed(batch_id, ingestion_date, body.get("currentAssignee", "system"), str(exc))
+        return {
+            "statusCode": 429,
+            "body": json.dumps({
+                "batchID": batch_id,
+                "error": "Another batch is currently processing. Please retry later.",
+            }),
+        }
+    except Exception as exc:
+        logger.error("Failed to trigger Glue job: %s", exc, exc_info=True)
+        if batch_created:
+            mark_batch_failed(batch_id, ingestion_date, body.get("currentAssignee", "system"), str(exc))
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"batchID": batch_id, "error": str(exc)}),
+        }
