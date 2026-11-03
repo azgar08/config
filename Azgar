@@ -1,82 +1,10 @@
-# SNS Topic
+GSI	"GSI_Status
 
-resource "aws_sns_topic" "glue_failure" {
-  name = "${var.project_name}-${var.environment}-glue-failure-alerts"
+PK = status"	"GSI_Ingestion_Date
 
-  tags = var.tags
-}
-
-# Email Subscriptions
-
-resource "aws_sns_topic_subscription" "email" {
-  for_each = toset(var.notification_emails)
-
-  topic_arn = aws_sns_topic.glue_failure.arn
-  protocol  = "email"
-  endpoint  = each.value
-}
-
-# EventBridge rule
-
-resource "aws_cloudwatch_event_rule" "glue_job_failed" {
-
-  name        = "${var.project_name}-${var.environment}-glue-job-failed"
-  description = "Capture Glue Job FAILED events"
-
-  event_pattern = jsonencode({
-    "source" : [
-      "aws.glue"
-    ],
-    "detail-type" : [
-      "Glue Job State Change"
-    ],
-    "detail" : {
-      "state" : [
-        "FAILED"
-      ],
-      "jobName" : var.glue_job_names
-    }
-  })
-
-  tags = var.tags
-}
-
-# EventBridge Target
-
-resource "aws_cloudwatch_event_target" "sns" {
-
-  rule = aws_cloudwatch_event_rule.glue_job_failed.name
-  arn  = aws_sns_topic.glue_failure.arn
-}
-
-# Allow EventBridge to publish to SNS
-
-resource "aws_sns_topic_policy" "default" {
-
-  arn = aws_sns_topic.glue_failure.arn
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-
-    Statement = [
-      {
-        Sid    = "AllowEventBridge"
-        Effect = "Allow"
-
-        Principal = {
-          Service = "events.amazonaws.com"
-        }
-
-        Action = "sns:Publish"
-
-        Resource = aws_sns_topic.glue_failure.arn
-
-        Condition = {
-          ArnEquals = {
-            "aws:SourceArn" = aws_cloudwatch_event_rule.glue_job_failed.arn
-          }
-        }
-      }
-    ]
-  })
-}
+PK = entity_type
+SK = ingestionDate"
+	"Count by status 
+(regardless of date)"	GSI_Status
+	Count for today	GSI_Ingestion_Date
+	Count older than 7 days	GSI_Ingestion_Date
