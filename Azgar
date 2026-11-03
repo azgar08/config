@@ -1,7 +1,4 @@
-
-
 Plugin entrypoint specified
-
 -------------------- STO Plugin [START] --------------------
 
 STO Plugin [v1.108.0-1791286811] (run_strategy=docker-in-docker)
@@ -39,3 +36,119 @@ Target variant: [RAAS-57559-ML_Code]
 Starting setup for product [checkmarx]
 
 Found matching product config [('repository', 'default')]
+
+------------------ STO Plugin Setup [END] ------------------
+
+------------------ Process Issues [START] ------------------
+
+Found SARIF results file with version 2.1.0
+
+Number of raw issues extracted: 41
+
+Count after normalization: 41
+
+Count after deduplication: 6
+
+Deduplicated by: [85.37%]
+
+Starting issue upload
+
+Issue upload complete
+
+------------------- Process Issues [END] -------------------
+
+Scan Results: {
+
+    "jobId": "Qe1kK4Rb0x_uDHIvATG7r4",
+
+    "status": "Succeeded",
+
+    "issuesCount": 6,
+
+    "newIssuesCount": 6,
+
+    "issuesBySeverityCount": {
+
+        "ExternalPolicyFailures": 0,
+
+        "NewCritical": 1,
+
+        "NewHigh": 0,
+
+        "NewMedium": 1,
+
+        "NewLow": 4,
+
+        "NewInfo": 0,
+
+        "Unassigned": 0,
+
+        "NewUnassigned": 0,
+
+        "Critical": 1,
+
+        "High": 0,
+
+        "Medium": 1,
+
+        "Low": 4,
+
+        "Info": 0,
+
+        "Ignored": 0,
+
+        "NewIgnoredCritical": 0,
+
+        "NewIgnoredHigh": 0,
+
+        "NewIgnoredMedium": 0,
+
+        "NewIgnoredLow": 0,
+
+        "NewIgnoredInfo": 0,
+
+        "NewIgnoredUnassigned": 0,
+
+        "IgnoredCritical": 0,
+
+        "IgnoredHigh": 0,
+
+        "IgnoredMedium": 0,
+
+        "IgnoredLow": 0,
+
+        "IgnoredInfo": 0,
+
+        "IgnoredUnassigned": 0,
+
+        "NewOccurrencesCritical": 1,
+
+        "NewOccurrencesHigh": 0,
+
+        "NewOccurrencesMedium": 3,
+
+        "NewOccurrencesLow": 37,
+
+        "NewOccurrencesInfo": 0,
+
+        "NewOccurrencesUnassigned": 0,
+
+        "NewIgnoredOccurrencesCritical": 0,
+
+        "NewIgnoredOccurrencesHigh": 0,
+
+        "NewIgnoredOccurrencesMedium": 0,
+
+        "NewIgnoredOccurrencesLow": 0,
+
+        "NewIgnoredOccurrencesInfo": 0,
+
+        "NewIgnoredOccurrencesUnassigned": 0
+
+    }
+
+}
+
+--------------------- STO Plugin [END] ---------------------
+
+Exited with message: fail_on_severity is set to high and that threshold was reached.
