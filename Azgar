@@ -1,149 +1,25 @@
 
-variable "name" {
-  description = "Base DynamoDB table name"
-  type        = string
+output "dynamodb_table_name" {
+  description = "DynamoDB table name"
+  value       = aws_dynamodb_table.this.name
 }
 
-variable "environment" {
-  type = string
+output "dynamodb_table_arn" {
+  description = "DynamoDB table ARN"
+  value       = aws_dynamodb_table.this.arn
 }
 
-variable "region" {
-  type = string
+output "dynamodb_table_id" {
+  description = "DynamoDB table ID"
+  value       = aws_dynamodb_table.this.id
 }
 
-variable "hash_key" {
-  description = "DynamoDB partition key"
-  type        = string
+output "dynamodb_stream_arn" {
+  description = "DynamoDB stream ARN"
+  value       = aws_dynamodb_table.this.stream_arn
 }
 
-variable "range_key" {
-  description = "DynamoDB sort key"
-  type        = string
-  default     = null
-}
-
-variable "billing_mode" {
-  description = "DynamoDB billing mode"
-  type        = string
-  default     = "PAY_PER_REQUEST"
-
-  validation {
-    condition     = contains(["PAY_PER_REQUEST", "PROVISIONED"], var.billing_mode)
-    error_message = "billing_mode must be PAY_PER_REQUEST or PROVISIONED."
-  }
-}
-
-variable "table_class" {
-  type    = string
-  default = "STANDARD"
-}
-
-variable "attributes" {
-  description = "DynamoDB table and index key attributes"
-
-  type = list(object({
-    name = string
-    type = string
-  }))
-}
-
-variable "global_secondary_indexes" {
-  description = "DynamoDB global secondary indexes"
-
-  type = list(object({
-    name            = string
-    hash_key        = string
-    range_key       = optional(string, null)
-    projection_type = string
-  }))
-
-  default = []
-}
-
-variable "point_in_time_recovery_enabled" {
-  type    = bool
-  default = true
-}
-
-variable "ttl_enabled" {
-  type    = bool
-  default = true
-}
-
-variable "ttl_attribute_name" {
-  type    = string
-  default = "Timestamp"
-}
-
-variable "stream_enabled" {
-  type    = bool
-  default = true
-}
-
-variable "stream_view_type" {
-  type    = string
-  default = "NEW_AND_OLD_IMAGES"
-}
-
-variable "server_side_encryption_kms_key_arn" {
-  type = string
-}
-
-variable "deletion_protection_enabled" {
-  type    = bool
-  default = true
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
-
-variable "table_policy" {
-  description = "DynamoDB table resource policy statements"
-
-  type = list(object({
-    sid       = string
-    effect    = string
-    actions   = list(string)
-    resources = list(string)
-
-    principals = list(object({
-      type        = string
-      identifiers = list(string)
-    }))
-
-    condition = list(object({
-      test     = string
-      variable = string
-      values   = list(string)
-    }))
-  }))
-
-  default = []
-}
-
-variable "stream_policy" {
-  description = "DynamoDB stream resource policy statements"
-
-  type = list(object({
-    sid       = string
-    effect    = string
-    actions   = list(string)
-    resources = list(string)
-
-    principals = list(object({
-      type        = string
-      identifiers = list(string)
-    }))
-
-    condition = list(object({
-      test     = string
-      variable = string
-      values   = list(string)
-    }))
-  }))
-
-  default = []
+output "dynamodb_stream_enabled" {
+  description = "DynamoDB stream status"
+  value       = aws_dynamodb_table.this.stream_enabled
 }
