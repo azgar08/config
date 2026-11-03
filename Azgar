@@ -1,67 +1,23 @@
-│ Warning: Argument is deprecated
-│
-│   with aws_dynamodb_table.this,
-│   on db.tf line 12, in resource "aws_dynamodb_table" "this":
-│   12: resource "aws_dynamodb_table" "this" {
-│
-│ hash_key is deprecated. Use key_schema instead.
-│
-│ (and 2 more similar warnings elsewhere)
-╵
+# DynamoDB Table Resource Policy
 
-Do you want to perform these actions?
-  Terraform will perform the actions described above.
-  Only 'yes' will be accepted to approve.
+output "dynamodb_table_policy_id" {
+  description = "DynamoDB table resource policy ID"
+  value       = try(aws_dynamodb_resource_policy.table_policy[0].id, null)
+}
 
-  Enter a value: yes
+output "dynamodb_table_policy" {
+  description = "DynamoDB table resource policy JSON"
+  value       = try(data.aws_iam_policy_document.table_policy[0].json, null)
+}
 
-aws_dynamodb_table.this: Creating...
-aws_dynamodb_table.this: Still creating... [10s elapsed]
-aws_dynamodb_table.this: Still creating... [20s elapsed]
-aws_dynamodb_table.this: Still creating... [30s elapsed]
-aws_dynamodb_table.this: Still creating... [40s elapsed]
-aws_dynamodb_table.this: Creation complete after 46s [id=dlx-r360plus-redaction-batch-initiator-us-east-1-dev]
-aws_dynamodb_resource_policy.table_policy[0]: Creating...
-aws_dynamodb_resource_policy.stream_policy[0]: Creating...
-╷
-│ Warning: Argument is deprecated
-│
-│   with aws_dynamodb_table.this,
-│   on db.tf line 12, in resource "aws_dynamodb_table" "this":
-│   12: resource "aws_dynamodb_table" "this" {
-│
-│ range_key is deprecated. Use key_schema instead.
-│
-│ (and 2 more similar warnings elsewhere)
-╵
-╷
-│ Error: creating DynamoDB Resource Policy (arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-initiator-us-east-1-dev)
-│
-│   with aws_dynamodb_resource_policy.table_policy[0],
-│   on db.tf line 103, in resource "aws_dynamodb_resource_policy" "table_policy":
-│  103: resource "aws_dynamodb_resource_policy" "table_policy" {
-│
-│ operation error DynamoDB: PutResourcePolicy, https response error
-│ StatusCode: 400, RequestID:
-│ PBM3IAQECVAF4CT1EDPO1N0NIJVV4KQNSO5AEMVJF66Q9ASUAAJG, api error
-│ ValidationException: One or more parameter values were invalid: Invalid
-│ principal in policy document.
-╵
-╷
-│ Error: creating DynamoDB Resource Policy (arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-initiator-us-east-1-dev/stream/2026-11-03T11:07:48.845)
-│
-│   with aws_dynamodb_resource_policy.stream_policy[0],
-│   on db.tf line 148, in resource "aws_dynamodb_resource_policy" "stream_policy":
-│  148: resource "aws_dynamodb_resource_policy" "stream_policy" {
-│
-│ operation error DynamoDB: PutResourcePolicy, https response error
-│ StatusCode: 400, RequestID:
-│ HTTMEHOKNJT2R9J87GU8ACHL07VV4KQNSO5AEMVJF66Q9ASUAAJG, api error
-│ ValidationException: One or more parameter values were invalid: Invalid
-│ policy document: The following action names are invalid:
-│ "dynamodb:ListStreams"
-╵
-Releasing state lock. This may take a few moments...
-time=2026-11-03T16:38:38+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\pci-redaction\dynamodb\batch-initiator]
-time=2026-11-03T16:38:38+05:30 level=error msg=1 error occurred:
-        * [C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ] exit status 1
+# DynamoDB Stream Resource Policy
+
+output "dynamodb_stream_policy_id" {
+  description = "DynamoDB stream resource policy ID"
+  value       = try(aws_dynamodb_resource_policy.stream_policy[0].id, null)
+}
+
+output "dynamodb_stream_policy" {
+  description = "DynamoDB stream resource policy JSON"
+  value       = try(data.aws_iam_policy_document.stream_policy[0].json, null)
+}
