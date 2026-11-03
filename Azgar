@@ -1,23 +1,32 @@
-# DynamoDB Table Name
-output "dynamodb_table_name" {
-  description = "DynamoDB table name"
-  value       = data.aws_dynamodb_table.this.name
-}
+$ terragrunt plan
+Acquiring state lock. This may take a few moments...
+data.aws_iam_policy_document.table_policy: Reading...
+data.aws_iam_policy_document.stream_policy: Reading...
+data.aws_iam_policy_document.stream_policy: Read complete after 0s [id=414209366]
+data.aws_iam_policy_document.table_policy: Read complete after 0s [id=2916213988]
 
-# DynamoDB Table ARN
-output "dynamodb_table_arn" {
-  description = "DynamoDB table ARN"
-  value       = module.dynamodb_table.dynamodb_table_arn
-}
+Planning failed. Terraform encountered an error while generating this plan.
 
-# DynamoDB Table ID
-output "dynamodb_table_id" {
-  description = "DynamoDB table ID"
-  value       = data.aws_dynamodb_table.this.id
-}
-
-# DynamoDB Stream ARN
-output "dynamodb_stream_arn" {
-  description = "DynamoDB stream ARN"
-  value       = module.dynamodb_table.dynamodb_table_stream_arn
-}
+╷
+│ Warning: Argument is deprecated
+│
+│   with module.dynamodb_table.module.dynamodb_table.aws_dynamodb_table.this[0],
+│   on .terraform\modules\dynamodb_table.dynamodb_table\main.tf line 5, in resource "aws_dynamodb_table" "this":
+│    5: resource "aws_dynamodb_table" "this" {
+│
+│ hash_key is deprecated. Use key_schema instead.
+│
+│ (and 2 more similar warnings elsewhere)
+╵
+╷
+│ Error: expected billing_mode to be one of ["PROVISIONED" "PAY_PER_REQUEST"], got ON_DEMAND
+│
+│   with module.dynamodb_table.module.dynamodb_table.aws_dynamodb_table.this[0],
+│   on .terraform\modules\dynamodb_table.dynamodb_table\main.tf line 9, in resource "aws_dynamodb_table" "this":
+│    9:   billing_mode                = var.billing_mode
+│
+╵
+Releasing state lock. This may take a few moments...
+time=2026-11-03T15:40:20+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\pci-redaction\dynamodb\batch-initiator]
+time=2026-11-03T15:40:20+05:30 level=error msg=1 error occurred:
+        * [C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ] exit status 1
