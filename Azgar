@@ -1,40 +1,56 @@
-Do you want to perform these actions?
-  Terraform will perform the actions described above.
-  Only 'yes' will be accepted to approve.
+table_policy = [
+  {
+    sid    = "BatchInitiatorTableAccess"
+    effect = "Allow"
 
-  Enter a value: yes
+    principals = [
+      {
+        type = "AWS"
+        identifiers = [
+          "arn:aws:iam::697179190149:role/dlx-r360plus-redaction-batch-initiator-lambda-dev-role",
+          "arn:aws:iam::697179190149:role/dlx-r360plus-batch-processor-glue-dev-role"
+        ]
+      }
+    ]
 
-aws_dynamodb_resource_policy.table_policy[0]: Creating...
-aws_dynamodb_resource_policy.stream_policy[0]: Creating...
-╷
-│ Error: creating DynamoDB Resource Policy (arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-initiator-us-east-1-dev)
-│
-│   with aws_dynamodb_resource_policy.table_policy[0],
-│   on db.tf line 103, in resource "aws_dynamodb_resource_policy" "table_policy":
-│  103: resource "aws_dynamodb_resource_policy" "table_policy" {
-│
-│ operation error DynamoDB: PutResourcePolicy, https response error
-│ StatusCode: 400, RequestID:
-│ 14I812NEBDO55HTO07711N7IMFVV4KQNSO5AEMVJF66Q9ASUAAJG, api error
-│ ValidationException: Resource-based policy grants unbounded access in one
-│ or more elements. Please revise the policy to ensure least-privilege form
-│ of access
-╵
-╷
-│ Error: creating DynamoDB Resource Policy (arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-initiator-us-east-1-dev/stream/2026-11-03T11:07:48.845)
-│
-│   with aws_dynamodb_resource_policy.stream_policy[0],
-│   on db.tf line 148, in resource "aws_dynamodb_resource_policy" "stream_policy":
-│  148: resource "aws_dynamodb_resource_policy" "stream_policy" {
-│
-│ operation error DynamoDB: PutResourcePolicy, https response error
-│ StatusCode: 400, RequestID:
-│ 8R19FF4PGDADEMG86B95FDD7NBVV4KQNSO5AEMVJF66Q9ASUAAJG, api error
-│ ValidationException: One or more parameter values were invalid: Invalid
-│ policy document: The following action names are invalid:
-│ "dynamodb:ListStreams"
-╵
-Releasing state lock. This may take a few moments...
-time=2026-11-03T16:44:21+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\pci-redaction\dynamodb\batch-initiator]
-time=2026-11-03T16:44:21+05:30 level=error msg=1 error occurred:
-        * [C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ] exit status 1
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:BatchGetItem",
+      "dynamodb:BatchWriteItem"
+    ]
+
+    resources = [
+      local.table_arn
+    ]
+
+    condition = []
+  },
+  {
+    sid    = "BatchInitiatorQueryAccess"
+    effect = "Allow"
+
+    principals = [
+      {
+        type = "AWS"
+        identifiers = [
+          "arn:aws:iam::697179190149:role/dlx-r360plus-redaction-batch-initiator-lambda-dev-role",
+          "arn:aws:iam::697179190149:role/dlx-r360plus-batch-processor-glue-dev-role"
+        ]
+      }
+    ]
+
+    actions = [
+      "dynamodb:Query"
+    ]
+
+    resources = [
+      local.table_arn,
+      "${local.table_arn}/index/GSI_Status",
+      "${local.table_arn}/index/GSI_Ingestion_Date"
+    ]
+
+    condition = []
+  }
+]
