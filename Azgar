@@ -1,141 +1,121 @@
 
-module "dynamodb_table" {
-  source = "git::ssh://git@bitbucket.org/deluxe-development/aws-dynamodb-table.git//?ref=1.0.2"
-
-  name        = var.name
-  hash_key    = var.hash_key
-  range_key   = var.range_key
-  attributes  = var.attributes
-  environment = var.environment
-  region      = var.region
-
-  billing_mode = var.billing_mode
-
-  point_in_time_recovery_enabled = true
-
-  read_capacity  = var.read_capacity
-  write_capacity = var.write_capacity
-
-  table_class = "STANDARD"
-
-  ttl_enabled        = true
-  ttl_attribute_name = "Timestamp"
-
-  stream_enabled   = var.stream_enabled
-  stream_view_type = var.stream_view_type
-
-  server_side_encryption_enabled     = true
-  server_side_encryption_kms_key_arn = var.server_side_encryption_kms_key_arn
-
-  global_secondary_indexes = [
-    {
-      name            = "GSI_Status"
-      hash_key        = "status"
-      range_key       = null
-      projection_type = "ALL"
-    },
-    {
-      name            = "GSI_Ingestion_Date"
-      hash_key        = "entity_type"
-      range_key       = "ingestionDate"
-      projection_type = "ALL"
-    }
-  ]
-
-  tags            = var.tags
-  replica_regions = var.replica_regions
+variable "name" {
+  description = "Base DynamoDB table name"
+  type        = string
 }
 
-# DynamoDB table lookup
-
-data "aws_dynamodb_table" "this" {
-  name = "${var.name}-${var.region}-${var.environment}"
-
-  depends_on = [module.dynamodb_table]
+variable "hash_key" {
+  description = "DynamoDB partition key"
+  type        = string
 }
 
-# Table policy document
-
-data "aws_iam_policy_document" "table_policy" {
-  count = length(var.table_policy) > 0 ? 1 : 0
-
-  dynamic "statement" {
-    for_each = var.table_policy
-
-    content {
-      sid       = statement.value.sid
-      actions   = statement.value.actions
-      effect    = statement.value.effect
-      resources = statement.value.resources
-
-      dynamic "principals" {
-        for_each = statement.value.principals
-
-        content {
-          type        = principals.value.type
-          identifiers = principals.value.identifiers
-        }
-      }
-
-      dynamic "condition" {
-        for_each = statement.value.condition
-
-        content {
-          test     = condition.value.test
-          variable = condition.value.variable
-          values   = condition.value.values
-        }
-      }
-    }
-  }
+variable "range_key" {
+  description = "DynamoDB sort key"
+  type        = string
+  default     = null
 }
 
-resource "aws_dynamodb_resource_policy" "db_policy" {
-  count = length(var.table_policy) > 0 ? 1 : 0
+variable "attributes" {
+  description = "DynamoDB table and index attributes"
 
-  resource_arn = module.dynamodb_table.dynamodb_table_arn
-  policy       = data.aws_iam_policy_document.table_policy[0].json
+  type = list(object({
+    name = string
+    type = string
+  }))
 }
 
-# Stream policy document
-
-data "aws_iam_policy_document" "stream_policy" {
-  count = var.stream_enabled && length(var.stream_policy) > 0 ? 1 : 0
-
-  dynamic "statement" {
-    for_each = var.stream_policy
-
-    content {
-      sid       = statement.value.sid
-      actions   = statement.value.actions
-      effect    = statement.value.effect
-      resources = statement.value.resources
-
-      dynamic "principals" {
-        for_each = statement.value.principals
-
-        content {
-          type        = principals.value.type
-          identifiers = principals.value.identifiers
-        }
-      }
-
-      dynamic "condition" {
-        for_each = statement.value.condition
-
-        content {
-          test     = condition.value.test
-          variable = condition.value.variable
-          values   = condition.value.values
-        }
-      }
-    }
-  }
+variable "environment" {
+  type = string
 }
 
-resource "aws_dynamodb_resource_policy" "db_stream_policy" {
-  count = var.stream_enabled && length(var.stream_policy) > 0 ? 1 : 0
+variable "region" {
+  type = string
+}
 
-  resource_arn = module.dynamodb_table.dynamodb_table_stream_arn
-  policy       = data.aws_iam_policy_document.stream_policy[0].json
+variable "billing_mode" {
+  description = "DynamoDB billing mode"
+  type        = string
+  default     = "PAY_PER_REQUEST"
+}
+
+variable "read_capacity" {
+  type    = number
+  default = null
+}
+
+variable "write_capacity" {
+  type    = number
+  default = null
+}
+
+variable "stream_enabled" {
+  type    = bool
+  default = true
+}
+
+variable "stream_view_type" {
+  type    = string
+  default = "NEW_AND_OLD_IMAGES"
+}
+
+variable "server_side_encryption_kms_key_arn" {
+  type = string
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+
+variable "replica_regions" {
+  type    = list(string)
+  default = []
+}
+
+variable "table_policy" {
+  description = "DynamoDB table resource policy"
+
+  type = list(object({
+    sid       = string
+    actions   = list(string)
+    effect    = string
+    resources = list(string)
+
+    principals = list(object({
+      type        = string
+      identifiers = list(string)
+    }))
+
+    condition = list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    }))
+  }))
+
+  default = []
+}
+
+variable "stream_policy" {
+  description = "DynamoDB stream resource policy"
+
+  type = list(object({
+    sid       = string
+    actions   = list(string)
+    effect    = string
+    resources = list(string)
+
+    principals = list(object({
+      type        = string
+      identifiers = list(string)
+    }))
+
+    condition = list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    }))
+  }))
+
+  default = []
 }
