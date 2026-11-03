@@ -1,23 +1,16 @@
-Initializing modules...
-Downloading git::ssh://git@bitbucket.org/deluxe-development/aws-dynamodb-table.git?ref=1.0.1 for dynamodb_table...
+$ terragrunt plan
+Acquiring state lock. This may take a few moments...
+Releasing state lock. This may take a few moments...
 ╷
-│ Error: Failed to download module
+│ Error: Unsupported attribute
 │
-│   on db.tf line 1:
-│    1: module "dynamodb_table" {
+│   on outputs.tf line 2, in output "dynamodb_table_name":
+│    2:   value = module.dynamodb_table.dynamodb_table_name
+│     ├────────────────
+│     │ module.dynamodb_table is a object
 │
-│ Could not download module "dynamodb_table" (db.tf:1) source code from
-│ "git::ssh://git@bitbucket.org/deluxe-development/aws-dynamodb-table.git?ref=1.0.1":
-│ error downloading
-│ 'ssh://git@bitbucket.org/deluxe-development/aws-dynamodb-table.git?ref=1.0.1':
-│ C:\Program Files\Git\mingw64\bin\git.exe exited with 128: Cloning into
-│ '.terraform\modules\dynamodb_table'...
-│ fatal: cannot stat
-│ 'C:/Users/t469203/Desktop/PCI/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/pci-redaction/dynamodb/batch-initiator/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ/.terraform/modules/dynamodb_table/.git/hooks/applypatch-msg.sample':
-│ Filename too long
-│
+│ This object does not have an attribute named "dynamodb_table_name".
 ╵
-
-time=2026-11-03T15:21:10+05:30 level=error msg=terraform invocation failed in C:/Users/t469203/Desktop/PCI/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/pci-redaction/dynamodb/batch-initiator/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\pci-redaction\dynamodb\batch-initiator]
-time=2026-11-03T15:21:10+05:30 level=error msg=1 error occurred:
-        * [C:/Users/t469203/Desktop/PCI/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/pci-redaction/dynamodb/batch-initiator/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ] exit status 1
+time=2026-11-03T15:26:55+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\pci-redaction\dynamodb\batch-initiator]
+time=2026-11-03T15:26:55+05:30 level=error msg=1 error occurred:
+        * [C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ] exit status 1
