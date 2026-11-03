@@ -1,165 +1,50 @@
 
-variable "resource_name" {
-  description = "Logical resource name used for DynamoDB Name tags"
-  type        = string
+output "dynamodb_table_name" {
+  description = "DynamoDB table name"
+  value       = aws_dynamodb_table.this.name
 }
 
-variable "table_name" {
-  description = "Actual DynamoDB table name in AWS"
-  type        = string
+output "dynamodb_table_arn" {
+  description = "DynamoDB table ARN"
+  value       = aws_dynamodb_table.this.arn
 }
 
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
+output "dynamodb_table_id" {
+  description = "DynamoDB table ID"
+  value       = aws_dynamodb_table.this.id
 }
 
-variable "region" {
-  description = "AWS region"
-  type        = string
-}
-
-variable "hash_key" {
+output "dynamodb_table_hash_key" {
   description = "DynamoDB partition key"
-  type        = string
+  value       = aws_dynamodb_table.this.hash_key
 }
 
-variable "range_key" {
+output "dynamodb_table_range_key" {
   description = "DynamoDB sort key"
-  type        = string
-  default     = null
+  value       = aws_dynamodb_table.this.range_key
 }
 
-variable "billing_mode" {
-  description = "DynamoDB billing mode"
-  type        = string
-  default     = "PAY_PER_REQUEST"
-
-  validation {
-    condition     = contains(["PAY_PER_REQUEST", "PROVISIONED"], var.billing_mode)
-    error_message = "billing_mode must be PAY_PER_REQUEST or PROVISIONED."
-  }
+output "dynamodb_table_stream_arn" {
+  description = "DynamoDB Stream ARN"
+  value       = aws_dynamodb_table.this.stream_arn
 }
 
-variable "table_class" {
-  description = "DynamoDB table class"
-  type        = string
-  default     = "STANDARD"
+output "dynamodb_stream_enabled" {
+  description = "DynamoDB Stream enabled status"
+  value       = aws_dynamodb_table.this.stream_enabled
 }
 
-variable "attributes" {
-  description = "DynamoDB table and index key attributes"
-
-  type = list(object({
-    name = string
-    type = string
-  }))
+output "dynamodb_stream_view_type" {
+  description = "DynamoDB Stream view type"
+  value       = aws_dynamodb_table.this.stream_view_type
 }
 
-variable "global_secondary_indexes" {
-  description = "DynamoDB global secondary indexes"
-
-  type = list(object({
-    name            = string
-    hash_key        = string
-    range_key       = optional(string, null)
-    projection_type = string
-  }))
-
-  default = []
+output "dynamodb_table_policy_id" {
+  description = "DynamoDB table resource policy ID"
+  value       = try(aws_dynamodb_resource_policy.table_policy[0].id, null)
 }
 
-variable "point_in_time_recovery_enabled" {
-  description = "Enable point-in-time recovery"
-  type        = bool
-  default     = true
-}
-
-variable "ttl_enabled" {
-  description = "Enable DynamoDB TTL"
-  type        = bool
-  default     = true
-}
-
-variable "ttl_attribute_name" {
-  description = "DynamoDB TTL attribute"
-  type        = string
-  default     = "Timestamp"
-}
-
-variable "stream_enabled" {
-  description = "Enable DynamoDB Streams"
-  type        = bool
-  default     = true
-}
-
-variable "stream_view_type" {
-  description = "DynamoDB stream view type"
-  type        = string
-  default     = "NEW_AND_OLD_IMAGES"
-}
-
-variable "server_side_encryption_kms_key_arn" {
-  description = "KMS key ARN for DynamoDB encryption"
-  type        = string
-}
-
-variable "deletion_protection_enabled" {
-  description = "Enable table deletion protection"
-  type        = bool
-  default     = true
-}
-
-variable "tags" {
-  description = "DynamoDB resource tags"
-  type        = map(string)
-  default     = {}
-}
-
-variable "table_policy" {
-  description = "Optional DynamoDB table resource policy statements"
-
-  type = list(object({
-    sid       = string
-    effect    = string
-    actions   = list(string)
-    resources = list(string)
-
-    principals = list(object({
-      type        = string
-      identifiers = list(string)
-    }))
-
-    condition = list(object({
-      test     = string
-      variable = string
-      values   = list(string)
-    }))
-  }))
-
-  default = []
-}
-
-variable "stream_policy" {
-  description = "Optional DynamoDB stream resource policy statements"
-
-  type = list(object({
-    sid       = string
-    effect    = string
-    actions   = list(string)
-    resources = list(string)
-
-    principals = list(object({
-      type        = string
-      identifiers = list(string)
-    }))
-
-    condition = list(object({
-      test     = string
-      variable = string
-      values   = list(string)
-    }))
-  }))
-
-  default = []
+output "dynamodb_stream_policy_id" {
+  description = "DynamoDB stream resource policy ID"
+  value       = try(aws_dynamodb_resource_policy.stream_policy[0].id, null)
 }
