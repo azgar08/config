@@ -1,35 +1,41 @@
-# Table resource policy document
 
-data "aws_iam_policy_document" "table_policy" {
-  count = length(var.table_policy) > 0 ? 1 : 0
 
-  dynamic "statement" {
-    for_each = var.table_policy
+Plugin entrypoint specified
 
-    content {
-      sid       = statement.value.sid
-      effect    = statement.value.effect
-      actions   = statement.value.actions
-      resources = statement.value.resources
+-------------------- STO Plugin [START] --------------------
 
-      dynamic "principals" {
-        for_each = statement.value.principals
+STO Plugin [v1.108.0-1791286811] (run_strategy=docker-in-docker)
 
-        content {
-          type        = principals.value.type
-          identifiers = principals.value.identifiers
-        }
-      }
+----------------- CA File Register [START] -----------------
 
-      dynamic "condition" {
-        for_each = statement.value.condition
+Looking for certificates in /shared/customer_artifacts/certificates
 
-        content {
-          test     = condition.value.test
-          variable = condition.value.variable
-          values   = condition.value.values
-        }
-      }
-    }
-  }
-}
+---------------- CA Folder Contents [START] ----------------
+
+total 0
+
+drwxr-xr-x. 2 root root  6 Oct  6 08:57 .
+
+drwxr-xr-x. 1 root root 42 Oct  6 08:58 ..
+
+----------------- CA Folder Contents [END] -----------------
+
+Successfully updated certificates
+
+------------------ CA File Register [END] ------------------
+
+----------------- STO Plugin Setup [START] -----------------
+
+SSL Verification is enabled
+
+SSL Verification is enabled
+
+Target scan_type: [repository]
+
+Target name: [deluxe-development/RaaS/raas-pciredactionbackend]
+
+Target variant: [RAAS-57559-ML_Code]
+
+Starting setup for product [checkmarx]
+
+Found matching product config [('repository', 'default')]
