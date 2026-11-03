@@ -1,121 +1,13 @@
-Outputs:
-
-dynamodb_stream_enabled = true
-dynamodb_stream_policy_id = "arn:aws:dynamodb:us-east-1:697179190149:table/redact_batch_metadata/stream/2026-11-03T17:24:48.653"
-dynamodb_stream_view_type = "NEW_AND_OLD_IMAGES"
-dynamodb_table_arn = "arn:aws:dynamodb:us-east-1:697179190149:table/redact_batch_metadata"
-dynamodb_table_hash_key = "batchID"
-dynamodb_table_id = "redact_batch_metadata"
-dynamodb_table_name = "redact_batch_metadata"
-dynamodb_table_policy_id = "arn:aws:dynamodb:us-east-1:697179190149:table/redact_batch_metadata"
-dynamodb_table_range_key = "ingestionDate"
-dynamodb_table_stream_arn = "arn:aws:dynamodb:us-east-1:697179190149:table/redact_batch_metadata/stream/2026-11-03T17:24:48.653"
-
-
-
-
-locals {
-  account_vars    = read_terragrunt_config(find_in_parent_folders("account.hcl"))
-  aws_account_id  = local.account_vars.locals.aws_account_id
-  region_vars     = read_terragrunt_config(find_in_parent_folders("region.hcl"))
-  aws_region      = local.region_vars.locals.aws_region
-  environment_var = read_terragrunt_config(find_in_parent_folders("env.hcl"))
-  environment     = lower(local.environment_var.locals.environment)
-  resource_name   = "dlx-r360plus-redaction-batch-metadata-${local.environment}"
-  table_name      = "redact_batch_metadata"
-  table_arn       = "arn:aws:dynamodb:${local.aws_region}:${local.aws_account_id}:table/${local.table_name}"
-
-  source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//dynamodb"
-}
-
-dependency "common-tags" {
-  config_path = find_in_parent_folders("common-tags")
-}
-
-dependency "kms-pci-redaction" {
-  config_path = find_in_parent_folders("pci-redaction/kms/kms-pci-redaction")
-}
-
-dependency "iam-batch-processor-glue" {
-  config_path = find_in_parent_folders("pci-redaction/iam/iam-batch-processor-glue")
-}
-
-inputs = {
-  resource_name = local.resource_name
-  table_name    = local.table_name
-  environment = local.environment
-  region      = local.aws_region
-
-  # Primary table keys
-  hash_key  = "batchID"
-  range_key = "ingestionDate"
-
-  # On-demand billing
-  billing_mode = "PAY_PER_REQUEST"
-  table_class  = "STANDARD"
-
-  # Key attributes for table and GSIs
-  attributes = [
-    {
-      name = "batchID"
-      type = "S"
-    },
-    {
-      name = "ingestionDate"
-      type = "S"
-    },
-    {
-      name = "status"
-      type = "S"
-    },
-    {
-      name = "entity_type"
-      type = "S"
-    }
-  ]
-
-  # Global secondary indexes
-  global_secondary_indexes = [
-    {
-      name            = "GSI_Status"
-      hash_key        = "status"
-      range_key       = null
-      projection_type = "ALL"
-    },
-    {
-      name            = "GSI_Ingestion_Date"
-      hash_key        = "entity_type"
-      range_key       = "ingestionDate"
-      projection_type = "ALL"
-    }
-  ]
-
-  # Backup and recovery
-  point_in_time_recovery_enabled = true
-  deletion_protection_enabled    = true
-
-  # TTL
-  ttl_enabled        = true
-  ttl_attribute_name = "Timestamp"
-
-  # DynamoDB Streams
-  stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"
-
-  # KMS encryption
-  server_side_encryption_kms_key_arn = dependency.kms-pci-redaction.outputs.kms_arn
-
-  # Table policy: multiple IAM roles
-  table_policy = [
+table_policy = [
   {
-    sid    = "BatchMetadataTableAccess"
+    sid    = "BatchMetadataFullTableAccess"
     effect = "Allow"
 
     principals = [
       {
         type = "AWS"
         identifiers = [
-          dependency.iam-batch-processor-glue.outputs.iam_role_arn
+          "arn:aws:iam::${local.aws_account_id}:root"
         ]
       }
     ]
@@ -124,74 +16,19 @@ inputs = {
       "dynamodb:GetItem",
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
       "dynamodb:BatchGetItem",
-      "dynamodb:BatchWriteItem"
-    ]
-
-    resources = [
-      local.table_arn
-    ]
-
-    condition = []
-  },
-  {
-    sid    = "BatchMetadataQueryAccess"
-    effect = "Allow"
-
-    principals = [
-      {
-        type = "AWS"
-        identifiers = [
-          dependency.iam-batch-processor-glue.outputs.iam_role_arn
-        ]
-      }
-    ]
-
-    actions = [
-      "dynamodb:Query"
+      "dynamodb:BatchWriteItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "dynamodb:DescribeTable"
     ]
 
     resources = [
       local.table_arn,
-      "${local.table_arn}/index/GSI_Status",
-      "${local.table_arn}/index/GSI_Ingestion_Date"
+      "${local.table_arn}/index/*"
     ]
 
     condition = []
   }
 ]
-
-  # Stream policy
-  stream_policy = [
-  {
-    sid    = "BatchMetadataStreamAccess"
-    effect = "Allow"
-
-    principals = [
-      {
-        type = "AWS"
-        identifiers = [
-          dependency.iam-batch-processor-glue.outputs.iam_role_arn
-        ]
-      }
-    ]
-
-    actions = [
-      "dynamodb:DescribeStream",
-      "dynamodb:GetRecords",
-      "dynamodb:GetShardIterator"
-    ]
-
-    resources = []
-    condition = []
-  }
-]
-
-  # Common tags
-  tags = merge(
-    dependency.common-tags.outputs.common_tags,
-    {
-      TerraformPath = path_relative_to_include()
-    }
-  )
-}
