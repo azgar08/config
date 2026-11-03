@@ -1,4 +1,41 @@
-resources = [aws_dynamodb_table.this.stream_arn]
+Do you want to perform these actions?
+  Terraform will perform the actions described above.
+  Only 'yes' will be accepted to approve.
 
+  Enter a value: yes
 
-resources = statement.value.resources
+aws_dynamodb_resource_policy.stream_policy[0]: Creating...
+aws_dynamodb_resource_policy.table_policy[0]: Creating...
+╷
+│ Error: creating DynamoDB Resource Policy (arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-initiator-us-east-1-dev)
+│
+│   with aws_dynamodb_resource_policy.table_policy[0],
+│   on db.tf line 103, in resource "aws_dynamodb_resource_policy" "table_policy":
+│  103: resource "aws_dynamodb_resource_policy" "table_policy" {
+│
+│ operation error DynamoDB: PutResourcePolicy, https response error
+│ StatusCode: 400, RequestID:
+│ 64J55ET49J9UA4C25EL3T2RQ57VV4KQNSO5AEMVJF66Q9ASUAAJG, api error
+│ ValidationException: One or more parameter values were invalid: Invalid
+│ policy document: The relative-id
+│ "table/dlx-r360plus-redaction-batch-initiator-us-east-1-dev/stream/2026-11-03T11:07:48.845"
+│ is invalid for ARN
+│ "arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-initiator-us-east-1-dev/stream/2026-11-03T11:07:48.845"
+╵
+╷
+│ Error: creating DynamoDB Resource Policy (arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-initiator-us-east-1-dev/stream/2026-11-03T11:07:48.845)
+│
+│   with aws_dynamodb_resource_policy.stream_policy[0],
+│   on db.tf line 148, in resource "aws_dynamodb_resource_policy" "stream_policy":
+│  148: resource "aws_dynamodb_resource_policy" "stream_policy" {
+│
+│ operation error DynamoDB: PutResourcePolicy, https response error
+│ StatusCode: 400, RequestID:
+│ PIJBPR5GTLTDNQFVDKKBNL1GMNVV4KQNSO5AEMVJF66Q9ASUAAJG, api error
+│ ValidationException: One or more parameter values were invalid: Invalid
+│ principal in policy document.
+╵
+Releasing state lock. This may take a few moments...
+time=2026-11-03T16:52:38+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\pci-redaction\dynamodb\batch-initiator]
+time=2026-11-03T16:52:38+05:30 level=error msg=1 error occurred:
+        * [C:/Users/T469203/.terragrunt-cache/ypj2rjmbK9dRXOvipPcZWtOc0aw/1lsplrzOxFXTfjlsmFHh1SlNcVQ] exit status 1
