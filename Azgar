@@ -1,11 +1,16 @@
+
 locals {
-  account_vars    = read_terragrunt_config(find_in_parent_folders("account.hcl"))
-  aws_account_id  = local.account_vars.locals.aws_account_id
-  region_vars     = read_terragrunt_config(find_in_parent_folders("region.hcl"))
-  aws_region      = local.region_vars.locals.aws_region
+  account_vars   = read_terragrunt_config(find_in_parent_folders("account.hcl"))
+  aws_account_id = local.account_vars.locals.aws_account_id
+
+  region_vars = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  aws_region  = local.region_vars.locals.aws_region
+
   environment_var = read_terragrunt_config(find_in_parent_folders("env.hcl"))
   environment     = lower(local.environment_var.locals.environment)
-  name            = "dlx-r360plus-redaction-operational-support-${local.environment}"
+
+  name = "dlx-r360plus-redaction-operational-support-${local.environment}"
+
   source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//dynamodb"
 }
 
@@ -18,17 +23,21 @@ dependency "kms-pci-redaction" {
 }
 
 inputs = {
-  name         = local.name
-  environment  = local.environment
-  region       = local.region
-  hash_key     = "batchID"
-  range_key    = "ingestionDate"
+  # DynamoDB table configuration
+  name        = local.name
+  environment = local.environment
+  region      = local.aws_region
+
+  hash_key  = "batchID"
+  range_key = "ingestionDate"
+
   table_class  = "STANDARD"
   billing_mode = "ON_DEMAND"
+
   read_capacity  = 10
   write_capacity = 10
-  server_side_encryption_enabled     = true
-  server_side_encryption_kms_key_arn = dependency.kms-pci-redaction.outputs.kms_arn
+
+  # Primary table attributes and GSI attributes
   attributes = [
     {
       name = "batchID"
@@ -37,40 +46,101 @@ inputs = {
     {
       name = "ingestionDate"
       type = "S"
+    },
+    {
+      name = "status"
+      type = "S"
+    },
+    {
+      name = "entity_type"
+      type = "S"
     }
   ]
-   table_policy = [
-    {
-      sid = "Tablepolicy"
-      effect = "Allow"
-      principals = [
-        {
-        type        = "AWS"
-        identifiers = ["*"] 
-        }
-      ]
-    actions   = ["dynamodb:*"] # Allow all DynamoDB actions
-    resources = ["*"]         # Allow access to all DynamoDB resources
-    condition = []            # No specific condition
-  }
-]
 
-stream_policy = [
+  # Global Secondary Indexes
+  global_secondary_indexes = [
     {
-      sid    = "StreamPolicy"
+      name            = "GSI_Status"
+      hash_key        = "status"
+      range_key       = null
+      projection_type = "ALL"
+    },
+    {
+      name            = "GSI_Ingestion_Date"
+      hash_key        = "entity_type"
+      range_key       = "ingestionDate"
+      projection_type = "ALL"
+    }
+  ]
+
+  # Point-in-time recovery
+  point_in_time_recovery_enabled = true
+
+  # TTL
+  ttl_enabled        = true
+  ttl_attribute_name = "Timestamp"
+
+  # DynamoDB Streams
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  # Encryption
+  server_side_encryption_enabled     = true
+  server_side_encryption_kms_key_arn = dependency.kms-pci-redaction.outputs.kms_arn
+
+  # Table resource policy
+  table_policy = [
+    {
+      sid    = "TablePolicy"
       effect = "Allow"
+
       principals = [
         {
-        type        = "AWS"
-        identifiers = ["*"] 
+          type        = "AWS"
+          identifiers = ["*"]
         }
       ]
-      actions = ["dynamodb:*"]
-      resources = ["arn:aws:dynamodb:${local.region}:${local.aws_account}:table/${local.infra_environment}-${local.region}-r360plus-chat-history-Table/stream/*"]
+
+      actions = [
+        "dynamodb:*"
+      ]
+
+      resources = ["*"]
+
       condition = []
     }
   ]
-  tags = merge(dependency.common-tags.outputs.common_tags, {
-    "TerraformPath" = path_relative_to_include()
-  })
+
+  # DynamoDB Stream resource policy
+  stream_policy = [
+    {
+      sid    = "StreamPolicy"
+      effect = "Allow"
+
+      principals = [
+        {
+          type        = "AWS"
+          identifiers = ["*"]
+        }
+      ]
+
+      actions = [
+        "dynamodb:*"
+      ]
+
+      resources = [
+        "arn:aws:dynamodb:${local.aws_region}:${local.aws_account_id}:table/${local.name}/stream/*"
+      ]
+
+      condition = []
+    }
+  ]
+
+  # Common tags
+  tags = merge(
+    dependency.common-tags.outputs.common_tags,
+    {
+      TerraformPath = path_relative_to_include()
+    }
+  )
 }
