@@ -1,38 +1,181 @@
-Create Ticket
-
-Request Exemption
-Critical
-
-DynamoDB NoSQL Injection
-
-Overview
-
-Remediation
-
-Occurrence
-
-1
-
-Search
-Status: All
-
-
-
- 
-
-Severity
-
-File Name
-
-Line Number
-
-Status
-
-
-1
-
-Critical
-
-lambda/batch-initiator/src/start_lambda.py
-
-134
+Issue Raw Details
+{2 items
+"_rawCodeFlows":[1 item
+0:{1 item
+"threadFlows":[1 item
+0:{1 item
+"locations":[11 items
+0:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":18
+"startColumn":13
+"startLine":134
+}
+}
+}
+}
+1:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":25
+"startColumn":20
+"startLine":144
+}
+}
+}
+}
+2:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":17
+"startColumn":13
+"startLine":144
+}
+}
+}
+}
+3:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":24
+"startColumn":20
+"startLine":153
+}
+}
+}
+}
+4:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":30
+"startColumn":26
+"startLine":154
+}
+}
+}
+}
+5:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":17
+"startColumn":13
+"startLine":161
+}
+}
+}
+}
+6:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":21
+"startColumn":18
+"startLine":161
+}
+}
+}
+}
+7:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":56
+"startColumn":52
+"startLine":68
+}
+}
+}
+}
+8:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":21
+"startColumn":17
+"startLine":75
+}
+}
+}
+}
+9:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":15
+"startColumn":9
+"startLine":75
+}
+}
+}
+}
+10:{1 item
+"location":{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":34
+"startColumn":26
+"startLine":71
+}
+}
+}
+}
+]
+}
+]
+}
+]
+"_rawLocations":[1 item
+0:{1 item
+"physicalLocation":{2 items
+"artifactLocation":{1 item
+"uri":"lambda/batch-initiator/src/start_lambda.py"
+}
+"region":{3 items
+"endColumn":18
+"startColumn":13
+"startLine":134
+}
+}
+}
+]
+}
