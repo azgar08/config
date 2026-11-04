@@ -1,23 +1,29 @@
-variable "enable_api_gateway_trigger" {
-  description = "Enable API Gateway trigger for Lambda"
-  type        = bool
-  default     = false
-}
+│  304:   statement_id_prefix    = try(each.value.statement_id, each.key)
 
-variable "api_gateway_http_methods" {
-  description = "HTTP methods allowed for API Gateway"
-  type        = list(string)
-  default     = ["POST"]
-}
+│ 
 
-variable "api_gateway_execution_arn" {
-  description = "API Gateway execution ARN"
-  type        = string
-  default     = ""
-}
+╵
 
-variable "api_gateway_resource_path" {
-  description = "API Gateway resource path"
-  type        = string
-  default     = "*"
-}
+╷
+
+│ Error: expected length of statement_id_prefix to be in the range (1 - 100), got 
+
+│ 
+
+│   with module.aws_lambda.module.lambda_function["dlx-r360plus-redaction-ui-backend-lambda-dev"].aws_lambda_permission.unqualified_alias_triggers[""],
+
+│   on .terraform/modules/aws_lambda.lambda_function/main.tf line 304, in resource "aws_lambda_permission" "unqualified_alias_triggers":
+
+│  304:   statement_id_prefix    = try(each.value.statement_id, each.key)
+
+│ 
+
+╵
+
+time=2026-11-04T13:34:18Z level=error msg=tofu invocation failed in /tmp/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/pci-redaction/lambdas/lambda-ui-backend/.terragrunt-cache/l7EGVz-wfNpOyxGVLI3cn_cYFAU/nzPcPsfLcXGMpWZ30GY93GqxqQ4/lambda prefix=[/tmp/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/pci-redaction/lambdas/lambda-ui-backend] 
+
+time=2026-11-04T13:34:18Z level=error msg=1 error occurred:
+
+	* [/tmp/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/pci-redaction/lambdas/lambda-ui-backend/.terragrunt-cache/l7EGVz-wfNpOyxGVLI3cn_cYFAU/nzPcPsfLcXGMpWZ30GY93GqxqQ4/lambda] exit status 1
+
+
