@@ -1,36 +1,32 @@
-Resolving artifacts.deluxe.com (artifacts.deluxe.com)... 10.194.17.44, 10.194.25.103
+mmands will detect it and remind you to do so if necessary.
 
-Connecting to artifacts.deluxe.com (artifacts.deluxe.com)|10.194.17.44|:443... connected.
+╷
 
-HTTP request sent, awaiting response... 200 
+│ Warning: Deprecated attribute
 
-Length: 9782 (9.6K) [application/zip]
+│ 
 
-Saving to: ‘batch-initiator-RAAS-57559-ML_Code.0.2.16.zip’
+│   on .terraform/modules/aws_lambda.lambda_function/outputs.tf line 9, in output "lambda_function_arn_static":
 
+│    9:   value       = local.create && var.create_function && !var.create_layer ? "arn:${data.aws_partition.current.partition}:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.function_name}" : ""
 
-     0K .........                                             100%  222M=0s
+│ 
 
+│ The attribute "name" is deprecated. Refer to the provider documentation for
 
-2026-11-04 07:27:33 (222 MB/s) - ‘batch-initiator-RAAS-57559-ML_Code.0.2.16.zip’ saved [9782/9782]
+│ details.
 
+╵
 
-Cloning into 'infrastructure.raas.terraform.live'...
+╷
 
-Starting November 12, 2026, Bitbucket is moving SSH traffic to ssh.bitbucket.org. Change your host name now to avoid connection disruptions.
+│ Error: Reference to undeclared input variable
 
-Starting November 12, 2026, Bitbucket is moving SSH traffic to ssh.bitbucket.org. Change your host name now to avoid connection disruptions.
+│ 
 
-Switched to a new branch 'feature/PCI-REDACTION'
+│   on lambda.tf line 35, in resource "aws_lambda_permission" "api_gateway_trigger":
 
-branch 'feature/PCI-REDACTION' set up to track 'origin/feature/PCI-REDACTION'.
+│   35:   for_each = var.enable_api_gateway_trigger ? toset(var.api_gateway_http_methods) : toset([])
 
-  dev-east-1
+│ 
 
-* feature/PCI-REDACTION
-
-harness-G_zmzBHBSMKiEOIOogbuOQ.sh: line 64: cd: /tmp/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/lambda-batch-initiator: No such file or directory
-
-CommandExecution failed with exit code: (1)
-
-Shell Script execution failed. Please check execution logs.
