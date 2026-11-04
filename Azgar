@@ -1,8 +1,6 @@
-Get:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 rsync amd64 3.2.7-1ubuntu1.5 [443 kB]
-
 debconf: delaying package configuration, since apt-utils is not installed
 
-Fetched 472 kB in 1s (550 kB/s)
+Fetched 472 kB in 1s (591 kB/s)
 
 Selecting previously unselected package libpopt0:amd64.
 
@@ -51,6 +49,7 @@ Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
 
 .harness/Build_Pipelines/lambda/Build_Redaction_Batch_Initiator.yaml
 
-find: 'batch-initiator/src': No such file or directory
+bash: line 17: pushd: batch-initiator/src/: No such file or directory
 
-exit status 1
+Set package version to RAAS-57559-ML_Code.0.2.12
+
