@@ -1,41 +1,36 @@
+Resolving artifacts.deluxe.com (artifacts.deluxe.com)... 10.194.17.44, 10.194.25.103
+
+Connecting to artifacts.deluxe.com (artifacts.deluxe.com)|10.194.17.44|:443... connected.
+
+HTTP request sent, awaiting response... 200 
+
+Length: 9782 (9.6K) [application/zip]
+
+Saving to: ‘batch-initiator-RAAS-57559-ML_Code.0.2.16.zip’
 
 
+     0K .........                                             100%  222M=0s
 
 
+2026-11-04 07:27:33 (222 MB/s) - ‘batch-initiator-RAAS-57559-ML_Code.0.2.16.zip’ saved [9782/9782]
 
 
-Plugin entrypoint specified
+Cloning into 'infrastructure.raas.terraform.live'...
 
-Checking RT commands+ sh -c jf rt u --url ************** --detailed-summary=true --user $PLUGIN_USERNAME --password $PLUGIN_PASSWORD --flat=true "./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip" deluxe-raas-dl-local/RaaS-Redaction/
+Starting November 12, 2026, Bitbucket is moving SSH traffic to ssh.bitbucket.org. Change your host name now to avoid connection disruptions.
 
-07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
+Starting November 12, 2026, Bitbucket is moving SSH traffic to ssh.bitbucket.org. Change your host name now to avoid connection disruptions.
 
-07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
+Switched to a new branch 'feature/PCI-REDACTION'
 
-07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
+branch 'feature/PCI-REDACTION' set up to track 'origin/feature/PCI-REDACTION'.
 
-{
+  dev-east-1
 
-  "status": "failure",
+* feature/PCI-REDACTION
 
-  "totals": {
+harness-G_zmzBHBSMKiEOIOogbuOQ.sh: line 64: cd: /tmp/infrastructure.raas.terraform.live/DEV/us-east-1/DEV/lambda-batch-initiator: No such file or directory
 
-    "success": 0,
+CommandExecution failed with exit code: (1)
 
-    "failure": 0
-
-  }
-
-}
-
-07:12:27 [Info] Trace ID for JFrog Platform logs: ca89f8e13f187857
-
-07:12:27 [Error] upload finished with errors. Review the logs for more information
-
-exit status 1
-
-Checking RT commands+ sh -c jf rt u --url ************** --detailed-summary=true --user $PLUGIN_USERNAME --password $PLUGIN_PASSWORD --flat=true "./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip" deluxe-raas-dl-local/RaaS-Redaction/
-
-07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
-
-07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
+Shell Script execution failed. Please check execution logs.
