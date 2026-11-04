@@ -1,34 +1,238 @@
-table_policy = [
-  {
-    sid    = "BatchMetadataFullTableAccess"
-    effect = "Allow"
-
-    principals = [
-      {
-        type = "AWS"
-        identifiers = [
-          "arn:aws:iam::${local.aws_account_id}:root"
-        ]
+module "aws_lambda" {
+  #depends_on = [module.iam_role]
+  source = "git::ssh://git@bitbucket.org/deluxe-development/aws-lambda.git//?ref=1.0.8"
+  lambdas = [{
+    identifier                        = var.name
+    name                              = var.name
+    description                       = "${var.name} Function"
+    handler                           = var.lambda_handler
+    runtime                           = var.lambda_runtime
+    memory_size                       = var.lambda_memory_size
+    ephemeral_storage_size            = var.lambda_ephemeral_storage_size
+    timeout                           = 900
+    cloudwatch_logs_retention_in_days = var.lambda_logs_retention_in_days
+    iam_role_arn                      = var.iam_role == null ? module.iam_role.iam_role_arn : var.iam_role
+    local_existing_package            = var.package_path
+    kms_key_arn                       = var.lambda_kms
+    vpc_subnet_ids                    = var.vpc_subnet_ids
+    vpc_security_group_ids            = var.vpc_security_group_ids
+    environment_variables             = var.lambda_environment_variables
+    layers = try(coalescelist(var.lambda_layers, var.layers), null)
+    allowed_triggers = var.add_trigger ? {
+      "${var.TypeofTrigger}" = {
+        statement_id = var.statement_id,
+        principal    = var.principal,
+        source_arn   = var.lambda_trigger
       }
-    ]
+    } : {}
+    event_source_mapping = try(var.event_source_mapping, [])
+    tags                 = var.tags
+    function_tags        = var.function_tags
+  }]
+}
 
-    actions = [
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:BatchGetItem",
-      "dynamodb:BatchWriteItem",
-      "dynamodb:Query",
-      "dynamodb:Scan",
-      "dynamodb:DescribeTable"
-    ]
+resource "aws_lambda_permission" "api_gateway_trigger" {
+  for_each = var.enable_api_gateway_trigger ? toset(var.api_gateway_http_methods) : toset([])
 
-    resources = [
-      local.table_arn,
-      "${local.table_arn}/index/*"
-    ]
+  statement_id  = "AllowAPIGatewayInvoke-${var.name}-${each.key}"
+  action        = "lambda:InvokeFunction"
+  function_name = var.name
+  principal     = "apigateway.amazonaws.com"
 
-    condition = []
-  }
-]
+  source_arn = "${var.api_gateway_execution_arn}/*/${each.key}/${api_gateway_resource_path}"
+
+  depends_on = [module.aws_lambda]
+}
+
+
+variable "additional_kms_keys" {
+  description = "KMS keys to add to the policy"
+  type        = list(string)
+  default     = []
+}
+
+variable "iam_role" {
+  description = "Provide an IAM Role ARN or one will be created."
+  type    = string
+  default = null
+}
+
+variable "layers" {
+  description = "Layers for lambda function"
+  type = list(string)
+  default = [""]
+}
+
+variable "additional_s3_buckets" {
+  description = "S3 Buckets to add to the policy"
+  type        = list(string)
+  default     = []
+}
+
+variable "additional_sqs_queues" {
+  description = "SQS queues to add to the policy"
+  type        = list(string)
+  default     = []
+}
+
+variable "function_tags" {
+  description = "Lambda function tags"
+  type        = map(string)
+  default     = {}
+}
+
+variable "lambda_environment_variables" {
+  description = "Lambda environment variables"
+  type        = map(string)
+  default     = {}
+}
+
+variable "lambda_handler" {
+  description = "Handler for lambda function"
+  type        = string
+  default     = ""
+}
+
+variable "lambda_kms" {
+  description = "KMS for lambda function"
+  type        = string
+  default     = ""
+}
+
+variable "lambda_memory_size" {
+  description = "Memory size for lambda function"
+  type        = string
+  default     = ""
+}
+
+variable "lambda_logs_retention_in_days" {
+  description = "Lambda CloudWatch logs retention period in days"
+  type        = string
+  default     = ""
+}
+
+variable "lambda_runtime" {
+  description = "Runtime for lambda function"
+  type        = string
+  default     = ""
+}
+
+variable "lambda_trigger" {
+  description = "Trigger for lambda function"
+  type        = string
+  default     = ""
+}
+
+variable "name" {
+  description = "Name of Resource"
+  type        = string
+  default     = ""
+}
+
+variable "package_path" {
+  description = "Absolue path of the Lambda Package"
+  type        = string
+  default     = null
+}
+
+variable "policy_statement" {
+  description = "Contents of policy statement"
+  type        = string
+  default     = ""
+}
+
+variable "tags" {
+  type        = map(string)
+  description = "Tags to add to resources"
+  default     = {}
+}
+
+variable "vpc_security_group_ids" {
+  description = "Lambda SG ids"
+  type        = list(string)
+  default     = []
+}
+
+variable "vpc_subnet_ids" {
+  description = "VPC Subnet Used by the Lambda"
+  type        = list(string)
+  default     = []
+}
+
+variable "account_id" {
+  description = "account ID"
+  type        = string
+  default     = ""
+}
+
+variable "TypeofTrigger" {
+  description = "Trigger Type"
+  type        = string
+  default     = ""
+}
+
+variable "statement_id" {
+  description = "Allows executions of trigger"
+  type        = string
+  default     = ""
+}
+
+variable "principal" {
+  description = "principal"
+  type        = string
+  default     = ""
+}
+
+variable "event_source_mapping" {
+  description = "Event Source Mapping"
+  type        = any
+  default     = []
+}
+
+variable "trusted_entities" {
+  description = "List of IAM trusted services to be attached"
+  type        = list(string)
+  default     = []
+}
+
+variable "lambda_ephemeral_storage_size" {
+  description = "Ephemeral Storeage Size"
+  type        = number
+  default     = 512
+}
+
+variable "add_trigger" {
+  description = "Whether to add a trigger to the lambda function"
+  type        = bool
+  default     = true  # You can set true for those Lambdas where you need the trigger
+}
+
+variable "lambda_layers" {
+  description = "List of Lambda layer ARNs to attach to the function (optional)"
+  type        = list(string)
+  default     = []
+}
+
+variable "enable_api_gateway_trigger" {
+  description = "Enable API Gateway invocation permission"
+  type        = bool
+  default     = false
+}
+
+variable "api_gateway_execution_arn" {
+  description = "Execution ARN of the existing API Gateway"
+  type        = string
+  default     = ""
+}
+
+variable "api_gateway_http_method" {
+  description = "HTTP method configured in API Gateway"
+  type        = list(string)
+  default     = ["GET", "POST"]
+}
+
+variable "api_gateway_resource_path" {
+  description = "API Gateway resource path"
+  type        = string
+  default     = "*"
+}
