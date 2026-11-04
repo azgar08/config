@@ -1,25 +1,4 @@
-debconf: delaying package configuration, since apt-utils is not installed
-
-Fetched 472 kB in 1s (591 kB/s)
-
-Selecting previously unselected package libpopt0:amd64.
-
-(Reading database ... 
-(Reading database ... 5%
-(Reading database ... 10%
-(Reading database ... 15%
-(Reading database ... 20%
-(Reading database ... 25%
-(Reading database ... 30%
-(Reading database ... 35%
-(Reading database ... 40%
-(Reading database ... 45%
-(Reading database ... 50%
-(Reading database ... 55%
-(Reading database ... 60%
-(Reading database ... 65%
-(Reading database ... 70%
-(Reading database ... 75%
+database ... 75%
 (Reading database ... 80%
 (Reading database ... 85%
 (Reading database ... 90%
@@ -49,7 +28,12 @@ Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
 
 .harness/Build_Pipelines/lambda/Build_Redaction_Batch_Initiator.yaml
 
-bash: line 17: pushd: batch-initiator/src/: No such file or directory
+Set package version to RAAS-57559-ML_Code.0.2.13
 
-Set package version to RAAS-57559-ML_Code.0.2.12
+/harness/lambda/batch-initiator/src /harness
 
+Copying libs to lambda source code ...
+
+rsync: [sender] link_stat "/harness/lambda/batch-initiator/src/../tests/libs" failed: No such file or directory (2)
+
+rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1356) [sender=3.2.7]
