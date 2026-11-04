@@ -1,39 +1,227 @@
-database ... 75%
-(Reading database ... 80%
-(Reading database ... 85%
-(Reading database ... 90%
-(Reading database ... 95%
-(Reading database ... 100%
-(Reading database ... 9376 files and directories currently installed.)
+pipeline:
+  name: Build Redaction Batch Initiator
+  identifier: Build_Redaction_Batch_Initiator
+  projectIdentifier: RaaS
+  orgIdentifier: Payments
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: BitbucketCloud
+        repoName: raas-pciredactionbackend
+        build: <+input>
+  stages:
+    - stage:
+        name: Build
+        identifier: Build
+        type: CI
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: account.prodk8sdelegate4xlarge
+              namespace: harness-delegate-ng
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Pytest Unit Test
+                  identifier: pytest_unit_test
+                  spec:
+                    connectorRef: dockerhub
+                    image: python:3.12
+                    shell: Bash
+                    command: |-
+                      apt-get update && \
+                        apt-get install -y zip unzip && \
+                        apt-get clean;
 
-Preparing to unpack .../libpopt0_1.19+dfsg-1build1_amd64.deb ...
+                      cd lambda/<+pipeline.variables.moduleName>/tests
+                      echo "Execute setup environment script ..."
+                      . setup-env.sh setupjava
+                      pip list
+                      pytest --ignore=bdd --junitxml=junitresult.xml
 
-Unpacking libpopt0:amd64 (1.19+dfsg-1build1) ...
+                      set +e
+                      if [ -d bdd ]; then
+                        bdd_test_output=$(pytest bdd --junitxml=<+pipeline.variables.TestResultsFileName>)
+                        bdd_test_exitcd=$?
+                      else
+                        cp junitresult.xml <+pipeline.variables.TestResultsFileName>
+                        bdd_test_exitcd=0
+                      fi
+                      set -e
 
-Selecting previously unselected package rsync.
+                      VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
+                      cp "<+pipeline.variables.TestResultsFileName>" $VortexFilename
 
-Preparing to unpack .../rsync_3.2.7-1ubuntu1.5_amd64.deb ...
+                      ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
+                      echo "Adding '<+pipeline.variables.TestResultsFileName>' to archive: $ArchiveName"
+                      zip $ArchiveName "<+pipeline.variables.TestResultsFileName>"
 
-Unpacking rsync (3.2.7-1ubuntu1.5) ...
+                      echo "Uploading archive to Report Portal (<+variable.ReportPortalImportUrl>)"
+                      AccessToken="<+secrets.getValue("account.ReportPortalHarnessAccessToken")>"
+                      # curl -F "file=@$ArchiveName" -H "Authorization: Bearer $AccessToken" "<+variable.ReportPortalImportUrl>" 
 
-Setting up libpopt0:amd64 (1.19+dfsg-1build1) ...
+                      curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz" -H "Authorization: <+secrets.getValue("account.JFrog_Cloud_API_Token")>"
+                      tar -xzf ./ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz
+                      cd ./ZephyrUpload-<+variable.ZephyrUploadVersion>
+                      pip3 install -r ./ZephyrUpload/requirements.txt
+                      python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction" -type All -features "../" -junit "../$VortexFilename" -auth "<+secrets.getValue("raas_zephyr_token")>" -userid "<+secrets.getValue("raas_zephyr_userid")>" -noname
+                      cd ..
 
-Setting up rsync (3.2.7-1ubuntu1.5) ...
+                      if [ $bdd_test_exitcd -ne 0 ]
+                      then 
+                        echo $bdd_test_output
+                        exit $bdd_test_exitcd
+                      fi                                        
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - "**/*.xml"
+                  when:
+                    stageStatus: Success
+                  failureStrategies: []
+              - parallel:
+                  - stepGroup:
+                      name: CxOne Scan
+                      identifier: CxOne_Scan
+                      template:
+                        templateRef: account.CxOne_Scan
+                        versionLabel: 1.0.3
+                        templateInputs:
+                          variables:
+                            - name: SkipScan
+                              type: String
+                              default: "Yes"
+                              value: "Yes"
+                            - name: MemoryLimit
+                              type: String
+                              default: 1G
+                              value: <+input>.default(1G).allowedValues(1G,2G,4G,8G,500Mi)
+                            - name: ProjectName
+                              type: String
+                              value: deluxe-development/RaaS/<+<+pipeline.properties.ci.codebase.repoName>.toLowerCase()>
+                            - name: EnforcePolicy
+                              type: String
+                              value: "Yes"
+                            - name: SkipScaScan
+                              type: String
+                              value: "Yes"
+                  - stepGroup:
+                      name: SonarQube Scan
+                      identifier: SonarQube_Scan
+                      steps:
+                        - step:
+                            type: Run
+                            name: SonarQube Run
+                            identifier: SonarQube_Run
+                            spec:
+                              connectorRef: dockerhub
+                              image: sonarsource/sonar-scanner-cli
+                              shell: Sh
+                              command: sonar-scanner -Dsonar.projectKey="RaaS-<+pipeline.properties.ci.codebase.repoName>" -Dsonar.host.url="https://sonarqube.deluxe.com" -Dsonar.login="<+secrets.getValue("account.sonarqube_access_token")>" -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info -Dsonar.branch.name=<+codebase.branch>
+                              resources:
+                                limits:
+                                  memory: 4G
+                        - step:
+                            name: SonarQube Step
+                            identifier: SonarQube_Step
+                            template:
+                              templateRef: account.SonarQube_Step
+                              versionLabel: 1.0.0
+                              gitBranch: develop
+                              templateInputs:
+                                type: Sonarqube
+                                spec:
+                                  tool:
+                                    project_key: RaaS-<+pipeline.properties.ci.codebase.repoName>
+              - step:
+                  type: Run
+                  name: ArchiveSource
+                  identifier: ArchiveSource
+                  spec:
+                    connectorRef: artifactorydeluxecom
+                    image: dotnet/sdk:10.0
+                    shell: Bash
+                    command: |-
+                      apt-get update
+                      apt-get install -y zip
+                      apt-get install -y rsync
 
-invoke-rc.d: could not determine current runlevel
+                      git diff --name-only HEAD HEAD~1
 
-invoke-rc.d: policy-rc.d denied execution of start.
+                      export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>                      
+                      find lambda/<+pipeline.variables.moduleName>/src -name '*.py' -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
+                      echo "Set package version to ${package_version}"
 
-Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
+                      export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
+                      pushd lambda/<+pipeline.variables.moduleName>/src/
 
-.harness/Build_Pipelines/lambda/Build_Redaction_Batch_Initiator.yaml
+                      echo "Copying libs to lambda source code ..."
+                      rsync -r --exclude='*/__pycache__/' ../tests/libs ./
 
-Set package version to RAAS-57559-ML_Code.0.2.13
+                      echo "Archiving lambda source code ..."
+                      zip -r --move --test ../../$packaged_file ./;
+                      popd
 
-/harness/lambda/batch-initiator/src /harness
-
-Copying libs to lambda source code ...
-
-rsync: [sender] link_stat "/harness/lambda/batch-initiator/src/../tests/libs" failed: No such file or directory (2)
-
-rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1356) [sender=3.2.7]
+                      echo "Package file $packaged_file is ready to be pushed into Artifactory!"
+                    outputVariables:
+                      - name: packaged_file
+                      - name: package_version
+                  when:
+                    stageStatus: Success
+              - step:
+                  type: ArtifactoryUpload
+                  name: PushArtifactory
+                  identifier: PushArtifactory
+                  spec:
+                    connectorRef: account.artifactoryconnector
+                    target: <+pipeline.variables.artifactoryRepo>/<+pipeline.variables.frameworkName>/
+                    sourcePath: ./<+steps.ArchiveSource.output.outputVariables.packaged_file>
+                  when:
+                    stageStatus: Success
+                  failureStrategies: []
+          serviceDependencies:
+            - identifier: dind
+              name: dind
+              type: Service
+              spec:
+                connectorRef: artifactorydeluxecom
+                image: docker:dind
+                privileged: true
+          sharedPaths:
+            - /var/run
+            - /shared/scan_results
+  variables:
+    - name: bb_repoName
+      type: String
+      description: ""
+      value: raas-pciredactionbackend
+    - name: packageVersion
+      type: String
+      description: ""
+      value: "0.2"
+    - name: moduleName
+      type: String
+      description: ""
+      value: batch-initiator
+    - name: frameworkName
+      type: String
+      description: ""
+      value: RaaS-Redaction
+    - name: artifactoryRepo
+      type: String
+      description: ""
+      value: deluxe-raas-dl-local
+    - name: ProjectName
+      type: String
+      value: BatchInitiator
+    - name: TestResultsFileName
+      type: String
+      value: junitresults-bdd.xml
