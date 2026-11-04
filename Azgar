@@ -1,6 +1,41 @@
-if [ -d "../tests/libs" ]; then
-    echo "Copying libs to lambda source code ..."
-    rsync -r --exclude='*/__pycache__/' ../tests/libs/ ./
-else
-    echo "tests/libs directory not found. Skipping library copy for now."
-fi
+
+
+
+
+
+
+Plugin entrypoint specified
+
+Checking RT commands+ sh -c jf rt u --url ************** --detailed-summary=true --user $PLUGIN_USERNAME --password $PLUGIN_PASSWORD --flat=true "./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip" deluxe-raas-dl-local/RaaS-Redaction/
+
+07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
+
+07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
+
+07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
+
+{
+
+  "status": "failure",
+
+  "totals": {
+
+    "success": 0,
+
+    "failure": 0
+
+  }
+
+}
+
+07:12:27 [Info] Trace ID for JFrog Platform logs: ca89f8e13f187857
+
+07:12:27 [Error] upload finished with errors. Review the logs for more information
+
+exit status 1
+
+Checking RT commands+ sh -c jf rt u --url ************** --detailed-summary=true --user $PLUGIN_USERNAME --password $PLUGIN_PASSWORD --flat=true "./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip" deluxe-raas-dl-local/RaaS-Redaction/
+
+07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
+
+07:12:27 [Error] path does not exist: ./batch-initiator-RAAS-57559-ML_Code.0.2.15.zip
