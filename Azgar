@@ -1,17 +1,13 @@
-variable "glue_default_arguments" {
-  description = "Additional custom arguments for Glue jobs"
-  type        = map(string)
-  default     = {}
-}
+glue_driver_env_args = length(var.glue_driver_env_vars) > 0 ? {
+  "--customer-driver-env-vars" = join(",", [
+    for key, value in var.glue_driver_env_vars :
+    "${key}=${value}"
+  ])
+} : {}
 
-variable "glue_driver_env_vars" {
-  description = "Optional Glue driver environment variables"
-  type        = map(string)
-  default     = {}
-}
-
-variable "glue_executor_env_vars" {
-  description = "Optional Glue executor environment variables"
-  type        = map(string)
-  default     = {}
-}
+glue_executor_env_args = length(var.glue_executor_env_vars) > 0 ? {
+  "--customer-executor-env-vars" = join(",", [
+    for key, value in var.glue_executor_env_vars :
+    "${key}=${value}"
+  ])
+} : {}
