@@ -1,39 +1,23 @@
-set -e
-
-apt-get update
-apt-get install -y zip rsync python3 python3-pip
-
-git diff --name-only HEAD HEAD~1
-
-export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>
-
-MODULE_DIR="lambda/<+pipeline.variables.moduleName>"
-
-find "$MODULE_DIR/src" -name '*.py' \
-  -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
-
-echo "Set package version to ${package_version}"
-
-export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
-
-echo "Installing Python dependencies..."
-python3 -m pip install \
-  --no-cache-dir \
-  -r "$MODULE_DIR/requirement-dev.txt" \
-  -t "$MODULE_DIR/src/"
-
-echo "Copying libs to lambda source code..."
-if [ -d "$MODULE_DIR/tests/libs" ]; then
-    rsync -r --exclude='*/__pycache__/' \
-      "$MODULE_DIR/tests/libs/" "$MODULE_DIR/src/"
-else
-    echo "tests/libs directory not found. Skipping library copy."
-fi
-
-echo "Archiving lambda source code..."
-pushd "$MODULE_DIR/src/"
-zip -r --move --test "../../../$packaged_file" ./ \
-  -x "*/__pycache__/*" "*.pyc"
-popd
-
-echo "Package file $packaged_file is ready to be pushed into Artifactory!"
+{
+  "errorMessage": "An error occurred (AccessDeniedException) when calling the DescribeTable operation: User: arn:aws:sts::697179190149:assumed-role/dlx-r360plus-redaction-ui-backend-lambda-dev-role/dlx-r360plus-redaction-ui-backend-lambda-dev is not authorized to perform: dynamodb:DescribeTable on resource: arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-metadata-dev because no identity-based policy allows the dynamodb:DescribeTable action",
+  "errorType": "ClientError",
+  "requestId": "",
+  "stackTrace": [
+    "  File \"/var/lang/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n",
+    "  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n",
+    "  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n",
+    "  File \"<frozen importlib._bootstrap>\", line 1331, in _find_and_load_unlocked\n",
+    "  File \"<frozen importlib._bootstrap>\", line 935, in _load_unlocked\n",
+    "  File \"<frozen importlib._bootstrap_external>\", line 999, in exec_module\n",
+    "  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n",
+    "  File \"/var/task/app.py\", line 32, in <module>\n    repository = create_repository()\n",
+    "  File \"/var/task/repository.py\", line 955, in create_repository\n    return DynamoRepository()\n",
+    "  File \"/var/task/repository.py\", line 118, in __init__\n    for key in self.batch_table.key_schema\n",
+    "  File \"/var/task/boto3/resources/factory.py\", line 381, in property_loader\n    self.load()\n",
+    "  File \"/var/task/boto3/resources/factory.py\", line 565, in do_action\n    response = action(self, *args, **kwargs)\n",
+    "  File \"/var/task/boto3/resources/action.py\", line 88, in __call__\n    response = getattr(parent.meta.client, operation_name)(*args, **params)\n",
+    "  File \"/var/task/botocore/client.py\", line 606, in _api_call\n    return self._make_api_call(operation_name, kwargs)\n",
+    "  File \"/var/task/botocore/context.py\", line 123, in wrapper\n    return func(*args, **kwargs)\n",
+    "  File \"/var/task/botocore/client.py\", line 1094, in _make_api_call\n    raise error_class(parsed_response, operation_name)\n"
+  ]
+}
