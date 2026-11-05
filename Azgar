@@ -1,23 +1,222 @@
-{
-  "errorMessage": "An error occurred (AccessDeniedException) when calling the DescribeTable operation: User: arn:aws:sts::697179190149:assumed-role/dlx-r360plus-redaction-ui-backend-lambda-dev-role/dlx-r360plus-redaction-ui-backend-lambda-dev is not authorized to perform: dynamodb:DescribeTable on resource: arn:aws:dynamodb:us-east-1:697179190149:table/dlx-r360plus-redaction-batch-metadata-dev because no identity-based policy allows the dynamodb:DescribeTable action",
-  "errorType": "ClientError",
-  "requestId": "",
-  "stackTrace": [
-    "  File \"/var/lang/lib/python3.12/importlib/__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n",
-    "  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n",
-    "  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n",
-    "  File \"<frozen importlib._bootstrap>\", line 1331, in _find_and_load_unlocked\n",
-    "  File \"<frozen importlib._bootstrap>\", line 935, in _load_unlocked\n",
-    "  File \"<frozen importlib._bootstrap_external>\", line 999, in exec_module\n",
-    "  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n",
-    "  File \"/var/task/app.py\", line 32, in <module>\n    repository = create_repository()\n",
-    "  File \"/var/task/repository.py\", line 955, in create_repository\n    return DynamoRepository()\n",
-    "  File \"/var/task/repository.py\", line 118, in __init__\n    for key in self.batch_table.key_schema\n",
-    "  File \"/var/task/boto3/resources/factory.py\", line 381, in property_loader\n    self.load()\n",
-    "  File \"/var/task/boto3/resources/factory.py\", line 565, in do_action\n    response = action(self, *args, **kwargs)\n",
-    "  File \"/var/task/boto3/resources/action.py\", line 88, in __call__\n    response = getattr(parent.meta.client, operation_name)(*args, **params)\n",
-    "  File \"/var/task/botocore/client.py\", line 606, in _api_call\n    return self._make_api_call(operation_name, kwargs)\n",
-    "  File \"/var/task/botocore/context.py\", line 123, in wrapper\n    return func(*args, **kwargs)\n",
-    "  File \"/var/task/botocore/client.py\", line 1094, in _make_api_call\n    raise error_class(parsed_response, operation_name)\n"
+locals {
+  account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
+  region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+
+  aws_region   = local.region_vars.locals.aws_region
+  environment  = local.environment_vars.locals.environment
+  project_name = local.environment_vars.locals.project_name
+  account_name = local.account_vars.locals.account_name
+
+  source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue"
+}
+
+dependency "datalake" {
+  config_path = find_in_parent_folders("datalake")
+}
+
+dependency "common-tags" {
+  config_path = find_in_parent_folders("common-tags")
+}
+
+dependency "iam-open-invoice-processor-glue" {
+  config_path = find_in_parent_folders("iam-open-invoice-processor-glue")
+}
+
+
+# These are the variables we have to pass in to use the module specified in the terragrunt configuration above
+inputs = {
+  aws_region               = local.aws_region
+  environment              = local.environment
+  project_name             = local.project_name
+  account_name             = local.account_name
+  glue_job_name            = ["open-invoice-processor"]
+  glue_job_role_arn        = dependency.iam-open-invoice-processor-glue.outputs.iam_role_arn
+  glue_job_max_concur      = "100"
+  glue_job_execution_class = "STANDARD"
+  s3_glue_script_bucket    = dependency.datalake.outputs.glue_scripts_s3_id #source bucket
+  encryption_kms           = dependency.datalake.outputs.encyption_kms_arn
+  enable_security_cfg      = true
+  create_security_cfg      = false
+  glue_security_cfg        = dependency.datalake.outputs.glue_kms_security_cfg
+  glue_job_connection      = dependency.datalake.outputs.glue_connection_id
+
+  glue_log_group_retention_days = local.environment_vars.locals.cw_log_retention_in_days
+  glue_extra_libs = [
+    "common_modules/HudiTable.py",
+    "common_modules/NotificationService.py",
+    "common_modules/FPFModules/fpf_base_processor.py",
+    "common_modules/FPFModules/fpf_constants.py",
+    "common_modules/FPFModules/fpf_data_providers.py",
+    "common_modules/FPFModules/fpf_exceptions.py",
+    "common_modules/FPFModules/fpf_interfaces.py",
+    "common_modules/FPFModules/fpf_models.py",
+    "common_modules/FPFModules/fpf_stateful_models.py",
+    "common_modules/FPFModules/fpf_utils.py",
+    "common_modules/DBUtil.py"
   ]
+  s3_glue_asset_bucket = dependency.datalake.outputs.glue_assets_s3_id
+  s3_glue_tmp_bucket   = dependency.datalake.outputs.glue_temporary_s3_id
+
+  tags = merge(dependency.common-tags.outputs.common_tags, {
+    "TerraformPath" = path_relative_to_include()
+  })
+}
+
+
+
+glue.tf
+### Upload glue source to glue script bucket
+resource "aws_s3_object" "object" {
+  for_each = toset(var.glue_job_name)
+
+  bucket                 = var.s3_glue_script_bucket
+  key                    = "glue-scripts/${replace(each.value, "-", "_")}.py"
+  source                 = "/tmp/src/glue/${replace(each.value, "-", "_")}.py"
+  source_hash            = filemd5("/tmp/src/glue/${replace(each.value, "-", "_")}.py")
+  server_side_encryption = "aws:kms"
+  kms_key_id             = var.encryption_kms
+}
+
+### Glue Security Configuration
+### Deluxe policy to enable all bucket SSE so in order to allow Glue writes to S3
+###   the Glue context has to attach with a Security Configuration to access S3 with custom KMS
+### Limitation: Glue job can attach with ONE Security Configuration only
+###   A Glue job can NOT access to bucket ojects with different encryption KMS keys
+resource "aws_glue_security_configuration" "glue_security" {
+  count = var.create_security_cfg ? 1 : 0
+  name  = local.glue_security_cfg
+
+  encryption_configuration {
+    cloudwatch_encryption {
+      cloudwatch_encryption_mode = "DISABLED"
+    }
+
+    job_bookmarks_encryption {
+      job_bookmarks_encryption_mode = "DISABLED"
+    }
+
+    s3_encryption {
+      kms_key_arn        = var.encryption_kms
+      s3_encryption_mode = "SSE-KMS"
+    }
+  }
+}
+
+### Glue Job
+resource "aws_glue_job" "glue_job" {
+  for_each = toset(var.glue_job_name)
+
+  name        = "${var.project_name}-${each.value}-${var.environment}"
+  role_arn    = var.glue_job_role_arn
+  glue_version = "5.1"
+  connections = var.glue_job_connection != [] ? var.glue_job_connection : null
+
+  command {
+    script_location = "s3://${aws_s3_object.object[each.value].id}"
+    name            = var.glue_job_cmd_name
+    python_version  = var.glue_job_cmd_py_version
+  }
+
+  default_arguments = local.glue_default_args
+  tags              = var.tags
+
+  execution_property {
+    max_concurrent_runs = var.glue_job_max_concur
+  }
+
+  number_of_workers      = var.glue_job_number_of_workers
+  worker_type            = var.glue_job_worker_type
+  max_retries            = var.glue_job_max_retries
+  execution_class        = var.glue_job_execution_class
+  security_configuration = var.enable_security_cfg ? local.glue_security_cfg : null
+}
+
+resource "aws_cloudwatch_log_group" "glue" {
+  for_each = toset(["error", "output"])
+
+  name              = "/aws-glue/jobs/${local.glue_security_cfg}-role/${local.glue_role_name}/${each.value}"
+  retention_in_days = var.glue_log_group_retention_days
+}
+
+copy-s3.tf
+resource "aws_s3_bucket_object" "json_schemas" {
+  for_each               = fileset("/tmp/src/json/", "*")
+  bucket                 = var.s3_glue_asset_bucket
+  key                    = "json_schemas/${each.value}"
+  source                 = "/tmp/src/json/${each.value}"
+  source_hash            = filemd5("/tmp/src/json/${each.value}")
+  kms_key_id             = var.encryption_kms
+  server_side_encryption = "aws:kms"
+}
+
+resource "aws_s3_bucket_object" "xml_schemas" {
+  for_each               = fileset("/tmp/src/xml/", "*")
+  bucket                 = var.s3_glue_asset_bucket
+  key                    = "xml_schemas/${each.value}"
+  source                 = "/tmp/src/xml/${each.value}"
+  source_hash            = filemd5("/tmp/src/xml/${each.value}")
+  kms_key_id             = var.encryption_kms
+  server_side_encryption = "aws:kms"
+}
+
+resource "aws_s3_bucket_object" "rps_schemas" {
+  for_each               = fileset("/tmp/src/dat/", "*")
+  bucket                 = var.s3_glue_asset_bucket
+  key                    = "rps_schemas/${each.value}"
+  source                 = "/tmp/src/dat/${each.value}"
+  source_hash            = filemd5("/tmp/src/dat/${each.value}")
+  kms_key_id             = var.encryption_kms
+  server_side_encryption = "aws:kms"
+}
+
+resource "aws_s3_bucket_object" "ach_schemas" {
+  for_each               = fileset("/tmp/src/ach/", "*")
+  bucket                 = var.s3_glue_asset_bucket
+  key                    = "ach_schemas/${each.value}"
+  source                 = "/tmp/src/ach/${each.value}"
+  source_hash            = filemd5("/tmp/src/ach/${each.value}")
+  kms_key_id             = var.encryption_kms
+  server_side_encryption = "aws:kms"
+}
+
+resource "aws_s3_bucket_object" "wire_schemas" {
+  for_each               = fileset("/tmp/src/wire/", "*")
+  bucket                 = var.s3_glue_asset_bucket
+  key                    = "wire_schemas/${each.value}"
+  source                 = "/tmp/src/wire/${each.value}"
+  source_hash            = filemd5("/tmp/src/wire/${each.value}")
+  kms_key_id             = var.encryption_kms
+  server_side_encryption = "aws:kms"
+}
+locals.tf
+### Configurations for pipeline
+locals {
+  glue_job_name = var.glue_job_name
+  # Build input for extra py file input
+  extra_py_files = join(",", [for file in var.glue_extra_libs : "s3://${var.s3_glue_asset_bucket}/${file}"])
+
+  # Find more special args: https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-glue-arguments.html
+  # enable monitor job insights: https://docs.aws.amazon.com/glue/latest/dg/monitor-job-insights.html
+  glue_default_args = {
+    "--TempDir"                          = "s3://${var.s3_glue_tmp_bucket}/temporary/"
+    "--spark-event-logs-path"            = "s3://${var.s3_glue_asset_bucket}/sparkHistoryLogs/"
+    "--enable-spark-ui"                  = "true"
+    "--enable-glue-datacatalog"          = "true"
+    "--enable-metrics"                   = "true"
+    "--enable-continuous-cloudwatch-log" = "true"
+    "--class"                            = "GlueApp"
+    "--enable-job-insights"              = "true"
+    "--job-language"                     = "python"
+    "--extra-py-files"                   = local.extra_py_files
+  }
+
+  
+  glue_security_cfg = var.create_security_cfg ? "${var.glue_job_name[0]}-cfg" : var.glue_security_cfg
+
+  # Extract IAM role name from the role ARN
+  glue_role_name = element(
+    reverse(split("/", var.glue_job_role_arn)),
+    0
+  )
 }
