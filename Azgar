@@ -1,13 +1,55 @@
-glue_driver_env_args = length(var.glue_driver_env_vars) > 0 ? {
-  "--customer-driver-env-vars" = join(",", [
-    for key, value in var.glue_driver_env_vars :
-    "${key}=${value}"
-  ])
-} : {}
 
-glue_executor_env_args = length(var.glue_executor_env_vars) > 0 ? {
-  "--customer-executor-env-vars" = join(",", [
-    for key, value in var.glue_executor_env_vars :
-    "${key}=${value}"
+### Configurations for pipeline
+locals {
+  glue_job_name = var.glue_job_name
+
+  # Build input for extra Python files
+  extra_py_files = join(",", [
+    for file in var.glue_extra_libs :
+    "s3://${var.s3_glue_asset_bucket}/${file}"
   ])
-} : {}
+
+  # Default Glue job arguments
+  glue_default_args = merge(
+    {
+      "--TempDir"                          = "s3://${var.s3_glue_tmp_bucket}/temporary/"
+      "--spark-event-logs-path"            = "s3://${var.s3_glue_asset_bucket}/sparkHistoryLogs/"
+      "--enable-spark-ui"                  = "true"
+      "--enable-glue-datacatalog"          = "true"
+      "--enable-metrics"                   = "true"
+      "--enable-continuous-cloudwatch-log" = "true"
+      "--class"                            = "GlueApp"
+      "--enable-job-insights"              = "true"
+      "--job-language"                     = "python"
+      "--extra-py-files"                   = local.extra_py_files
+    },
+
+    # Optional driver environment variables
+    length(var.glue_driver_env_vars) > 0 ? {
+      "--customer-driver-env-vars" = join(",", [
+        for key, value in var.glue_driver_env_vars :
+        "${key}=${value}"
+      ])
+    } : {},
+
+    # Optional executor environment variables
+    length(var.glue_executor_env_vars) > 0 ? {
+      "--customer-executor-env-vars" = join(",", [
+        for key, value in var.glue_executor_env_vars :
+        "${key}=${value}"
+      ])
+    } : {},
+
+    # Optional custom Glue job arguments
+    var.glue_default_arguments
+  )
+
+  # Glue security configuration
+  glue_security_cfg = var.create_security_cfg ? "${var.glue_job_name[0]}-cfg" : var.glue_security_cfg
+
+  # Extract IAM role name from the role ARN
+  glue_role_name = element(
+    reverse(split("/", var.glue_job_role_arn)),
+    0
+  )
+}
