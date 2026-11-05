@@ -1,26 +1,39 @@
+set -e
+
 apt-get update
-apt-get install -y zip
-apt-get install -y rsync
+apt-get install -y zip rsync python3 python3-pip
 
 git diff --name-only HEAD HEAD~1
 
-export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>                      
-find lambda/<+pipeline.variables.moduleName>/src -name '*.py' -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
+export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>
+
+find lambda/<+pipeline.variables.moduleName>/src -name '*.py' \
+  -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
+
 echo "Set package version to ${package_version}"
 
 export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
-pushd lambda/<+pipeline.variables.moduleName>/src/
 
-echo "Copying libs to lambda source code ..."
-if [ -d "../tests/libs" ]; then
-    echo "Copying libs to lambda source code ..."
-    rsync -r --exclude='*/__pycache__/' ../tests/libs/ ./
+MODULE_DIR="lambda/<+pipeline.variables.moduleName>"
+
+echo "Installing Python dependencies..."
+python3 -m pip install \
+  --no-cache-dir \
+  -r "$MODULE_DIR/requirements.txt" \
+  -t "$MODULE_DIR/src/"
+
+echo "Copying libs to lambda source code..."
+if [ -d "$MODULE_DIR/tests/libs" ]; then
+    rsync -r --exclude='*/__pycache__/' \
+      "$MODULE_DIR/tests/libs/" "$MODULE_DIR/src/"
 else
-    echo "tests/libs directory not found. Skipping library copy for now."
+    echo "tests/libs directory not found. Skipping library copy."
 fi
 
-echo "Archiving lambda source code ..."
-zip -r --move --test ../../../$packaged_file ./;
+echo "Archiving lambda source code..."
+pushd "$MODULE_DIR/src/"
+zip -r --move --test "../../../$packaged_file" ./ \
+  -x "*/__pycache__/*" "*.pyc"
 popd
 
 echo "Package file $packaged_file is ready to be pushed into Artifactory!"
