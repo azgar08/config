@@ -1,53 +1,26 @@
+apt-get update
+apt-get install -y zip
+apt-get install -y rsync
 
-- step:
-    type: Run
-    name: ArchiveSource
-    identifier: ArchiveSource
-    spec:
-      connectorRef: artifactorydeluxecom
-      image: python:3.12
-      shell: Bash
-      command: |-
-        set -e
+git diff --name-only HEAD HEAD~1
 
-        apt-get update
-        apt-get install -y zip rsync
+export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>                      
+find lambda/<+pipeline.variables.moduleName>/src -name '*.py' -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
+echo "Set package version to ${package_version}"
 
-        export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>
+export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
+pushd lambda/<+pipeline.variables.moduleName>/src/
 
-        MODULE_DIR="<+pipeline.variables.moduleName>"
-        REQUIREMENTS_FILE="$MODULE_DIR/requirements.txt"
+echo "Copying libs to lambda source code ..."
+if [ -d "../tests/libs" ]; then
+    echo "Copying libs to lambda source code ..."
+    rsync -r --exclude='*/__pycache__/' ../tests/libs/ ./
+else
+    echo "tests/libs directory not found. Skipping library copy for now."
+fi
 
-        find "$MODULE_DIR/src" -name '*.py' -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
+echo "Archiving lambda source code ..."
+zip -r --move --test ../../../$packaged_file ./;
+popd
 
-        export packaged_file="$MODULE_DIR-$package_version.zip"
-
-        pushd "$MODULE_DIR/src/"
-
-        echo "Installing Python dependencies..."
-
-        python -m pip install \
-          --no-cache-dir \
-          --platform manylinux2014_x86_64 \
-          --implementation cp \
-          --python-version 3.12 \
-          --only-binary=:all: \
-          -r "../../$REQUIREMENTS_FILE" \
-          -t .
-
-        echo "Copying custom libraries..."
-        rsync -r --exclude='*/__pycache__/' ../tests/libs ./
-
-        echo "Creating Lambda deployment package..."
-        zip -r --move --test "../../$packaged_file" ./ \
-          -x "*/__pycache__/*" "*.pyc"
-
-        popd
-
-        echo "Lambda package ready: $packaged_file"
-    outputVariables:
-      - name: packaged_file
-      - name: package_version
-    when:
-      stageStatus: Success
-    failureStrategies: []
+echo "Package file $packaged_file is ready to be pushed into Artifactory!"
