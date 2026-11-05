@@ -7,19 +7,19 @@ git diff --name-only HEAD HEAD~1
 
 export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>
 
-find lambda/<+pipeline.variables.moduleName>/src -name '*.py' \
+MODULE_DIR="lambda/<+pipeline.variables.moduleName>"
+
+find "$MODULE_DIR/src" -name '*.py' \
   -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
 
 echo "Set package version to ${package_version}"
 
 export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
 
-MODULE_DIR="lambda/<+pipeline.variables.moduleName>"
-
 echo "Installing Python dependencies..."
 python3 -m pip install \
   --no-cache-dir \
-  -r "$MODULE_DIR/requirements.txt" \
+  -r "$MODULE_DIR/requirement-dev.txt" \
   -t "$MODULE_DIR/src/"
 
 echo "Copying libs to lambda source code..."
