@@ -1,3 +1,29 @@
-unzip -l batch-processor-RAAS-57559-ML_Code.0.2.7.zip | grep -E 'batch-processor.py|glue_redaction.py'
+t469203@TXD90089 MINGW64 ~/Downloads
+$ unzip -l batch-processor-RAAS-57559-ML_Code.0.2.7.zip | grep -E 'batch-processor.py|glue_redaction.py'
 unzip -l batch-processor-RAAS-57559-ML_Code.0.2.7.zip | grep 'pci_redaction/'
-ls -lh batch-processor-RAAS-57559-ML_Code.0.2.7.zip
+ls -lh batch-processor-RAAS-57559-ML_Code.0.2.7.z
+    16440  2026-11-06 14:40   glue_redaction.py
+        0  2026-11-06 14:40   pci_redaction/
+      812  2026-11-06 14:40   pci_redaction/__init__.py
+     8986  2026-11-06 14:40   pci_redaction/batch.py
+     1666  2026-11-06 14:40   pci_redaction/card_masking.py
+    23913  2026-11-06 14:40   pci_redaction/config.py
+     8847  2026-11-06 14:40   pci_redaction/config_rules.json
+   144423  2026-11-06 14:40   pci_redaction/detection.py
+    14903  2026-11-06 14:40   pci_redaction/fallbacks.py
+     8750  2026-11-06 14:40   pci_redaction/model.py
+     7905  2026-11-06 14:40   pci_redaction/ocr.py
+    11948  2026-11-06 14:40   pci_redaction/pipeline.py
+    13872  2026-11-06 14:40   pci_redaction/redaction.py
+     3985  2026-11-06 14:40   pci_redaction/s3_io.py
+    18228  2026-11-06 14:40   pci_redaction/tracking.py
+ls: cannot access 'batch-processor-RAAS-57559-ML_Code.0.2.7.z': No such file or directory
+
+t469203@TXD90089 MINGW64 ~/Downloads
+$ unzip -l batch-processor-RAAS-57559-ML_Code.0.2.7.zip | grep -E 'batch-processor.py|glue_redaction.py'
+    16440  2026-11-06 14:40   glue_redaction.py
+
+t469203@TXD90089 MINGW64 ~/Downloads
+$ ls -lh batch-processor-RAAS-57559-ML_Code.0.2.7.z
+ls: cannot access 'batch-processor-RAAS-57559-ML_Code.0.2.7.z': No such file or directory
+
