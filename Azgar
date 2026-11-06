@@ -1,200 +1,480 @@
-pipeline:
-  name: Deploy PCI Redaction Batch Processor Glue
-  identifier: Deploy_PCI_Redaction_Batch_Processor_Glue
-  projectIdentifier: RaaS
-  orgIdentifier: Payments
-  tags: {}
+Executing the following command(s):
+set -e
+set +x
+if [ -x "$(command -v git)" ]; then
+  git config --global --add safe.directory '*' || true 
+fi
+set -euo pipefail
 
-  stages:
-    - stage:
-        name: Deploy PCI Redaction Batch Processor Glue
-        identifier: Deploy_PCI_Redaction_Batch_Processor_Glue
-        type: Custom
-        spec:
-          execution:
-            steps:
-              - step:
-                  type: ShellScript
-                  name: Terragrunt Plan
-                  identifier: Terragrunt_Plan
-                  spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
 
-                          export TENV_AUTO_INSTALL=true
-                          export TERRAGRUNT_TFPATH=tofu
+echo "Preparing Batch Processor package..."
 
-                          echo "Deployment action: <+pipeline.variables.deploy_action>"
-                          echo "Environment: <+pipeline.variables.environment>"
-                          echo "Region: <+pipeline.variables.aws_region>"
+export package_version="RAAS-57559-ML_Code.0.2.8"
 
-                          case "<+pipeline.variables.env_delegate>" in
-                            dev-iac-delegate)
-                              ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
-                              ;;
-                            nonprod-iac-delegate)
-                              ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
-                              ;;
-                            prod-iac-delegate)
-                              ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
-                              ;;
-                            *)
-                              echo "Invalid delegate"
-                              exit 1
-                              ;;
-                          esac
+MODULE_DIR="glue/batch-processor"
+PACKAGE_ROOT="$PWD"
+PACKAGE_DIR="$(mktemp -d)"
 
-                          aws_credentials_json=$(aws sts assume-role \
-                            --role-arn "$ROLE_ARN" \
-                            --role-session-name RedactionGlueDeploy)
+export packaged_file="batch-processor-${package_version}.zip"
 
-                          export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq -r .Credentials.AccessKeyId)
-                          export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq -r .Credentials.SecretAccessKey)
-                          export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq -r .Credentials.SessionToken)
+trap 'rm -rf "$PACKAGE_DIR"' EXIT
 
-                          aws sts get-caller-identity
+if [ ! -f "$MODULE_DIR/src/glue_redaction.py" ]; then
+  echo "ERROR: glue_redaction.py not found!"
+  exit 1
+fi
 
-                          rm -rf /tmp/infrastructure.raas.terraform.live
+if [ ! -d "$MODULE_DIR/src/pci_redaction" ]; then
+  echo "ERROR: pci_redaction directory not found!"
+  exit 1
+fi
 
-                          cd /tmp
+if [ ! -f "$MODULE_DIR/requirements.txt" ]; then
+  echo "ERROR: requirements.txt not found!"
+  exit 1
+fi
 
-                          git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
+echo "Python version:"
+python --version
 
-                          cd infrastructure.raas.terraform.live
+echo "Installing runtime dependencies..."
 
-                          git checkout "<+pipeline.variables.branch_name>"
+python -m pip install \
+  --no-cache-dir \
+  --target "$PACKAGE_DIR" \
+  -r "$MODULE_DIR/requirements.txt"
 
-                          cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
+echo "Copying Glue application source..."
 
-                          terragrunt init
+cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
+cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
 
-                          terragrunt plan
+echo "Creating deployment ZIP with fast compression..."
 
-                          rm -rf /tmp/infrastructure.raas.terraform.live
+(cd "$PACKAGE_DIR" &amp;&amp; zip -1 -q -r "$PACKAGE_ROOT/$packaged_file" . \
+  -x "*/__pycache__/*" "*.pyc" "*.pyo")
 
-                          unset AWS_ACCESS_KEY_ID
-                          unset AWS_SECRET_ACCESS_KEY
-                          unset AWS_SESSION_TOKEN
-                  timeout: 45m
+echo "Validating deployment ZIP..."
 
-              - step:
-                  type: HarnessApproval
-                  name: Apply Approval
-                  identifier: Apply_Approval
-                  spec:
-                    approvalMessage: Please review the PCI Redaction Glue plan and approve.
-                    includePipelineExecutionHistory: true
-                    isAutoRejectEnabled: false
-                    approvers:
-                      userGroups:
-                        - account.Harness_RaaS_DevOps
-                      minimumCount: 1
-                      disallowPipelineExecutor: false
-                    approverInputs: []
-                  timeout: 1h
-                  when:
-                    stageStatus: Success
-                    condition: <+pipeline.variables.deploy_action> == "apply"
+unzip -t "$packaged_file" > /dev/null
 
-              - step:
-                  type: ShellScript
-                  name: Terragrunt Apply
-                  identifier: Terragrunt_Apply
-                  spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          set -euo pipefail
+if [ ! -s "$packaged_file" ]; then
+  echo "ERROR: Package ZIP is missing or empty!"
+  exit 1
+fi
 
-                          export TENV_AUTO_INSTALL=true
-                          export TERRAGRUNT_TFPATH=tofu
+echo "Package: $packaged_file"
+echo "Version: $package_version"
+ls -lh "$packaged_file"
 
-                          case "<+pipeline.variables.env_delegate>" in
-                            dev-iac-delegate)
-                              ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
-                              ;;
-                            nonprod-iac-delegate)
-                              ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
-                              ;;
-                            prod-iac-delegate)
-                              ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
-                              ;;
-                            *)
-                              echo "Invalid delegate"
-                              exit 1
-                              ;;
-                          esac
+echo "Package created successfully."
+echo "packaged_file $packaged_file" >> /addon/tmp/ArchiveSource.out
+echo "package_version $package_version" >> /addon/tmp/ArchiveSource.out
+Preparing Batch Processor package...
 
-                          aws_credentials_json=$(aws sts assume-role \
-                            --role-arn "$ROLE_ARN" \
-                            --role-session-name RedactionGlueApply)
+Python version:
 
-                          export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq -r .Credentials.AccessKeyId)
-                          export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq -r .Credentials.SecretAccessKey)
-                          export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq -r .Credentials.SessionToken)
+Python 3.11.18
 
-                          rm -rf /tmp/infrastructure.raas.terraform.live
+Installing runtime dependencies...
 
-                          cd /tmp
+Collecting transformers==4.46.3 (from -r glue/batch-processor/requirements.txt (line 2))
 
-                          git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
+  Downloading transformers-4.46.3-py3-none-any.whl.metadata (44 kB)
 
-                          cd infrastructure.raas.terraform.live
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.1/44.1 kB 2.4 MB/s eta 0:00:00
 
-                          git checkout "<+pipeline.variables.branch_name>"
+Collecting torch==2.5.1 (from -r glue/batch-processor/requirements.txt (line 3))
 
-                          cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
+  Downloading torch-2.5.1-cp311-cp311-manylinux1_x86_64.whl.metadata (28 kB)
 
-                          terragrunt init
+Collecting opencv-python-headless==4.10.0.84 (from -r glue/batch-processor/requirements.txt (line 6))
 
-                          terragrunt apply --auto-approve
+  Downloading opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (20 kB)
 
-                          rm -rf /tmp/infrastructure.raas.terraform.live
+Collecting Pillow==11.3.0 (from -r glue/batch-processor/requirements.txt (line 7))
 
-                          unset AWS_ACCESS_KEY_ID
-                          unset AWS_SECRET_ACCESS_KEY
-                          unset AWS_SESSION_TOKEN
-                  timeout: 45m
-                  when:
-                    stageStatus: Success
-                    condition: <+pipeline.variables.deploy_action> == "apply"
+  Downloading pillow-11.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.0 kB)
 
-  variables:
-    - name: branch_name
-      type: String
-      required: true
-      value: <+input>.default(dev-east-1)
+Collecting pydantic==2.11.7 (from -r glue/batch-processor/requirements.txt (line 10))
 
-    - name: aws_lz
-      type: String
-      required: true
-      value: <+input>.default(DEV).selectOneFrom(DEV,NONPROD,PROD)
+  Downloading pydantic-2.11.7-py3-none-any.whl.metadata (67 kB)
 
-    - name: aws_region
-      type: String
-      required: true
-      value: <+input>.default(us-east-1).selectOneFrom(us-east-1,us-west-2)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 68.0/68.0 kB 11.6 MB/s eta 0:00:00
 
-    - name: environment
-      type: String
-      required: true
-      value: <+input>.default(DEV).selectOneFrom(DEV,QA,RC,XUAT,PROD,DR)
+Collecting python-dateutil==2.9.0.post0 (from -r glue/batch-processor/requirements.txt (line 11))
 
-    - name: deploy_action
-      type: String
-      required: true
-      value: <+input>.default(apply).selectOneFrom(plan,apply,destroy)
+  Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
 
-    - name: env_delegate
-      type: String
-      required: true
-      value: <+input>.default(dev-iac-delegate).selectOneFrom(dev-iac-delegate,nonprod-iac-delegate,prod-iac-delegate)
+Collecting tenacity==9.1.2 (from -r glue/batch-processor/requirements.txt (line 12))
 
-  delegateSelectors:
-    - <+pipeline.variables.env_delegate>
+  Downloading tenacity-9.1.2-py3-none-any.whl.metadata (1.2 kB)
+
+Collecting aws-lambda-powertools==3.20.0 (from -r glue/batch-processor/requirements.txt (line 15))
+
+  Downloading aws_lambda_powertools-3.20.0-py3-none-any.whl.metadata (11 kB)
+
+Collecting filelock (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading filelock-4.2.9-py3-none-any.whl.metadata (2.3 kB)
+
+Collecting huggingface-hub&lt;1.0,>=0.23.2 (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading huggingface_hub-0.36.2-py3-none-any.whl.metadata (15 kB)
+
+Collecting numpy>=1.17 (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading numpy-2.4.6-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB)
+
+Collecting packaging>=20.0 (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+
+Collecting pyyaml>=5.1 (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading pyyaml-6.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+
+Collecting regex!=2019.12.17 (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading regex-2026.9.29-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (40 kB)
+
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 40.6/40.6 kB 414.3 MB/s eta 0:00:00
+
+Collecting requests (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading requests-2.34.2-py3-none-any.whl.metadata (4.8 kB)
+
+Collecting tokenizers&lt;0.21,>=0.20 (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading tokenizers-0.20.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.7 kB)
+
+Collecting safetensors>=0.4.1 (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.2 kB)
+
+Collecting tqdm>=4.27 (from transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading tqdm-4.70.1-py3-none-any.whl.metadata (57 kB)
+
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 57.4/57.4 kB 38.7 MB/s eta 0:00:00
+
+Collecting typing-extensions>=4.8.0 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+
+Collecting networkx (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading networkx-3.6.1-py3-none-any.whl.metadata (6.8 kB)
+
+Collecting jinja2 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+
+Collecting fsspec (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading fsspec-2026.9.0-py3-none-any.whl.metadata (10 kB)
+
+Collecting nvidia-cuda-nvrtc-cu12==12.4.127 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_cuda_nvrtc_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl.metadata (1.5 kB)
+
+Collecting nvidia-cuda-runtime-cu12==12.4.127 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_cuda_runtime_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl.metadata (1.5 kB)
+
+Collecting nvidia-cuda-cupti-cu12==12.4.127 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_cuda_cupti_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl.metadata (1.6 kB)
+
+Collecting nvidia-cudnn-cu12==9.1.0.70 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_cudnn_cu12-9.1.0.70-py3-none-manylinux2014_x86_64.whl.metadata (1.6 kB)
+
+Collecting nvidia-cublas-cu12==12.4.5.8 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_cublas_cu12-12.4.5.8-py3-none-manylinux2014_x86_64.whl.metadata (1.5 kB)
+
+Collecting nvidia-cufft-cu12==11.2.1.3 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_cufft_cu12-11.2.1.3-py3-none-manylinux2014_x86_64.whl.metadata (1.5 kB)
+
+Collecting nvidia-curand-cu12==10.3.5.147 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_curand_cu12-10.3.5.147-py3-none-manylinux2014_x86_64.whl.metadata (1.5 kB)
+
+Collecting nvidia-cusolver-cu12==11.6.1.9 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_cusolver_cu12-11.6.1.9-py3-none-manylinux2014_x86_64.whl.metadata (1.6 kB)
+
+Collecting nvidia-cusparse-cu12==12.3.1.170 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_cusparse_cu12-12.3.1.170-py3-none-manylinux2014_x86_64.whl.metadata (1.6 kB)
+
+Collecting nvidia-nccl-cu12==2.21.5 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_nccl_cu12-2.21.5-py3-none-manylinux2014_x86_64.whl.metadata (1.8 kB)
+
+Collecting nvidia-nvtx-cu12==12.4.127 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_nvtx_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl.metadata (1.7 kB)
+
+Collecting nvidia-nvjitlink-cu12==12.4.127 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading nvidia_nvjitlink_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl.metadata (1.5 kB)
+
+Collecting triton==3.1.0 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading triton-3.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.3 kB)
+
+Collecting sympy==1.13.1 (from torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading sympy-1.13.1-py3-none-any.whl.metadata (12 kB)
+
+Collecting annotated-types>=0.6.0 (from pydantic==2.11.7->-r glue/batch-processor/requirements.txt (line 10))
+
+  Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+
+Collecting pydantic-core==2.33.2 (from pydantic==2.11.7->-r glue/batch-processor/requirements.txt (line 10))
+
+  Downloading pydantic_core-2.33.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+
+Collecting typing-inspection>=0.4.0 (from pydantic==2.11.7->-r glue/batch-processor/requirements.txt (line 10))
+
+  Downloading typing_inspection-0.4.5-py3-none-any.whl.metadata (2.6 kB)
+
+Collecting six>=1.5 (from python-dateutil==2.9.0.post0->-r glue/batch-processor/requirements.txt (line 11))
+
+  Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+
+Collecting jmespath&lt;2.0.0,>=1.0.1 (from aws-lambda-powertools==3.20.0->-r glue/batch-processor/requirements.txt (line 15))
+
+  Downloading jmespath-1.1.0-py3-none-any.whl.metadata (7.6 kB)
+
+Collecting mpmath&lt;1.4,>=1.1.0 (from sympy==1.13.1->torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
+
+Collecting hf-xet&lt;2.0.0,>=1.1.3 (from huggingface-hub&lt;1.0,>=0.23.2->transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading hf_xet-1.8.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (4.9 kB)
+
+Collecting MarkupSafe>=2.0 (from jinja2->torch==2.5.1->-r glue/batch-processor/requirements.txt (line 3))
+
+  Downloading markupsafe-3.0.4-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.7 kB)
+
+Collecting charset_normalizer&lt;4,>=2 (from requests->transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading charset_normalizer-3.5.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (46 kB)
+
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 46.4/46.4 kB 416.1 MB/s eta 0:00:00
+
+Collecting idna&lt;4,>=2.5 (from requests->transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+
+Collecting urllib3&lt;3,>=1.26 (from requests->transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+
+Collecting certifi>=2023.5.7 (from requests->transformers==4.46.3->-r glue/batch-processor/requirements.txt (line 2))
+
+  Downloading certifi-2026.10.23-py3-none-any.whl.metadata (2.5 kB)
+
+Downloading transformers-4.46.3-py3-none-any.whl (10.0 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.0/10.0 MB 102.1 MB/s eta 0:00:00
+
+Downloading torch-2.5.1-cp311-cp311-manylinux1_x86_64.whl (906.5 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 906.5/906.5 MB 145.1 MB/s eta 0:00:00
+
+Downloading opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (49.9 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 49.9/49.9 MB 134.7 MB/s eta 0:00:00
+
+Downloading pillow-11.3.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (6.6 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.6/6.6 MB 151.4 MB/s eta 0:00:00
+
+Downloading pydantic-2.11.7-py3-none-any.whl (444 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 444.8/444.8 kB 566.8 MB/s eta 0:00:00
+
+Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 229.9/229.9 kB 527.5 MB/s eta 0:00:00
+
+Downloading tenacity-9.1.2-py3-none-any.whl (28 kB)
+
+Downloading aws_lambda_powertools-3.20.0-py3-none-any.whl (842 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 842.2/842.2 kB 281.1 MB/s eta 0:00:00
+
+Downloading nvidia_cublas_cu12-12.4.5.8-py3-none-manylinux2014_x86_64.whl (363.4 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 363.4/363.4 MB 159.4 MB/s eta 0:00:00
+
+Downloading nvidia_cuda_cupti_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl (13.8 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13.8/13.8 MB 161.1 MB/s eta 0:00:00
+
+Downloading nvidia_cuda_nvrtc_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl (24.6 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 24.6/24.6 MB 158.3 MB/s eta 0:00:00
+
+Downloading nvidia_cuda_runtime_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl (883 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 883.7/883.7 kB 287.0 MB/s eta 0:00:00
+
+Downloading nvidia_cudnn_cu12-9.1.0.70-py3-none-manylinux2014_x86_64.whl (664.8 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 664.8/664.8 MB 60.5 MB/s eta 0:00:00
+
+Downloading nvidia_cufft_cu12-11.2.1.3-py3-none-manylinux2014_x86_64.whl (211.5 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 211.5/211.5 MB 12.4 MB/s eta 0:00:00
+
+Downloading nvidia_curand_cu12-10.3.5.147-py3-none-manylinux2014_x86_64.whl (56.3 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 56.3/56.3 MB 17.2 MB/s eta 0:00:00
+
+Downloading nvidia_cusolver_cu12-11.6.1.9-py3-none-manylinux2014_x86_64.whl (127.9 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 127.9/127.9 MB 30.9 MB/s eta 0:00:00
+
+Downloading nvidia_cusparse_cu12-12.3.1.170-py3-none-manylinux2014_x86_64.whl (207.5 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 207.5/207.5 MB 48.6 MB/s eta 0:00:00
+
+Downloading nvidia_nccl_cu12-2.21.5-py3-none-manylinux2014_x86_64.whl (188.7 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 188.7/188.7 MB 59.5 MB/s eta 0:00:00
+
+Downloading nvidia_nvjitlink_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl (21.1 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 21.1/21.1 MB 60.3 MB/s eta 0:00:00
+
+Downloading nvidia_nvtx_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl (99 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 99.1/99.1 kB 503.4 MB/s eta 0:00:00
+
+Downloading pydantic_core-2.33.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.0 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 63.7 MB/s eta 0:00:00
+
+Downloading sympy-1.13.1-py3-none-any.whl (6.2 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.2/6.2 MB 64.4 MB/s eta 0:00:00
+
+Downloading triton-3.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (209.5 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 209.5/209.5 MB 87.2 MB/s eta 0:00:00
+
+Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+
+Downloading huggingface_hub-0.36.2-py3-none-any.whl (566 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 566.4/566.4 kB 151.8 MB/s eta 0:00:00
+
+Downloading fsspec-2026.9.0-py3-none-any.whl (221 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 221.7/221.7 kB 582.1 MB/s eta 0:00:00
+
+Downloading jmespath-1.1.0-py3-none-any.whl (20 kB)
+
+Downloading numpy-2.4.6-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.9 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.9/16.9 MB 90.8 MB/s eta 0:00:00
+
+Downloading packaging-26.3-py3-none-any.whl (129 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 130.0/130.0 kB 606.1 MB/s eta 0:00:00
+
+Downloading pyyaml-6.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (806 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 806.6/806.6 kB 146.4 MB/s eta 0:00:00
+
+Downloading regex-2026.9.29-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (804 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 805.0/805.0 kB 147.4 MB/s eta 0:00:00
+
+Downloading safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (516 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 516.0/516.0 kB 158.4 MB/s eta 0:00:00
+
+Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+
+Downloading tokenizers-0.20.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.0 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.0/3.0 MB 97.7 MB/s eta 0:00:00
+
+Downloading tqdm-4.70.1-py3-none-any.whl (80 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 80.2/80.2 kB 500.1 MB/s eta 0:00:00
+
+Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.6/45.6 kB 363.5 MB/s eta 0:00:00
+
+Downloading typing_inspection-0.4.5-py3-none-any.whl (14 kB)
+
+Downloading filelock-4.2.9-py3-none-any.whl (164 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 164.7/164.7 kB 589.3 MB/s eta 0:00:00
+
+Downloading jinja2-3.1.6-py3-none-any.whl (134 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 134.9/134.9 kB 584.9 MB/s eta 0:00:00
+
+Downloading networkx-3.6.1-py3-none-any.whl (2.1 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 104.9 MB/s eta 0:00:00
+
+Downloading requests-2.34.2-py3-none-any.whl (73 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73.1/73.1 kB 518.1 MB/s eta 0:00:00
+
+Downloading certifi-2026.10.23-py3-none-any.whl (135 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 135.1/135.1 kB 494.8 MB/s eta 0:00:00
+
+Downloading charset_normalizer-3.5.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (269 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 270.0/270.0 kB 639.8 MB/s eta 0:00:00
+
+Downloading hf_xet-1.8.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.3 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.3/4.3 MB 96.7 MB/s eta 0:00:00
+
+Downloading idna-3.20-py3-none-any.whl (69 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 69.6/69.6 kB 467.3 MB/s eta 0:00:00
+
+Downloading markupsafe-3.0.4-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (22 kB)
+
+Downloading mpmath-1.3.0-py3-none-any.whl (536 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 224.7 MB/s eta 0:00:00
+
+Downloading urllib3-2.8.0-py3-none-any.whl (135 kB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 135.7/135.7 kB 490.0 MB/s eta 0:00:00
+
+Installing collected packages: mpmath, urllib3, typing-extensions, tqdm, tenacity, sympy, six, safetensors, regex, pyyaml, Pillow, packaging, nvidia-nvtx-cu12, nvidia-nvjitlink-cu12, nvidia-nccl-cu12, nvidia-curand-cu12, nvidia-cufft-cu12, nvidia-cuda-runtime-cu12, nvidia-cuda-nvrtc-cu12, nvidia-cuda-cupti-cu12, nvidia-cublas-cu12, numpy, networkx, MarkupSafe, jmespath, idna, hf-xet, fsspec, filelock, charset_normalizer, certifi, annotated-types, typing-inspection, triton, requests, python-dateutil, pydantic-core, opencv-python-headless, nvidia-cusparse-cu12, nvidia-cudnn-cu12, jinja2, aws-lambda-powertools, pydantic, nvidia-cusolver-cu12, huggingface-hub, torch, tokenizers, transformers
+
+Successfully installed MarkupSafe-3.0.4 Pillow-11.3.0 annotated-types-0.8.0 aws-lambda-powertools-3.20.0 certifi-2026.10.23 charset_normalizer-3.5.2 filelock-4.2.9 fsspec-2026.9.0 hf-xet-1.8.0 huggingface-hub-0.36.2 idna-3.20 jinja2-3.1.6 jmespath-1.1.0 mpmath-1.3.0 networkx-3.6.1 numpy-2.4.6 nvidia-cublas-cu12-12.4.5.8 nvidia-cuda-cupti-cu12-12.4.127 nvidia-cuda-nvrtc-cu12-12.4.127 nvidia-cuda-runtime-cu12-12.4.127 nvidia-cudnn-cu12-9.1.0.70 nvidia-cufft-cu12-11.2.1.3 nvidia-curand-cu12-10.3.5.147 nvidia-cusolver-cu12-11.6.1.9 nvidia-cusparse-cu12-12.3.1.170 nvidia-nccl-cu12-2.21.5 nvidia-nvjitlink-cu12-12.4.127 nvidia-nvtx-cu12-12.4.127 opencv-python-headless-4.10.0.84 packaging-26.3 pydantic-2.11.7 pydantic-core-2.33.2 python-dateutil-2.9.0.post0 pyyaml-6.0.3 regex-2026.9.29 requests-2.34.2 safetensors-0.8.0 six-1.17.0 sympy-1.13.1 tenacity-9.1.2 tokenizers-0.20.3 torch-2.5.1 tqdm-4.70.1 transformers-4.46.3 triton-3.1.0 typing-extensions-4.16.0 typing-inspection-0.4.5 urllib3-2.8.0
+
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+
+
+
+[notice] A new release of pip is available: 24.0 -> 26.3
+
+[notice] To update, run: pip install --upgrade pip
+
+Copying Glue application source...
+
+Creating deployment ZIP with fast compression...
+
+bash: line 54: zip: command not found
