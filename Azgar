@@ -3,9 +3,231 @@ apt-get install -y zip unzip
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 grep -RInE 'import torch|from torch|AutoModel|AutoTokenizer|pipeline\(' glue/batch-processor/src
+"""Optional model inference and mapping predictions to OCR word candidates."""
+from __future__ import annotations
 
-$ grep -RInE 'import torch|from torch|AutoModel|AutoTokenizer|pipeline\(' glue/batch-processor/src
-glue/batch-processor/src/pci_redaction/model.py:148:                tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, local_files_only=True)
-glue/batch-processor/src/pci_redaction/model.py:149:                model = transformers.AutoModelForTokenClassification.from_pretrained(
-glue/batch-processor/src/pci_redaction/model.py:158:                MODEL_DETECTOR = transformers.pipeline(
+import importlib
+import inspect
+import os
+import re
+import shutil
+import tarfile
+import tempfile
+import threading
+from hashlib import sha256
+from pathlib import Path
+from typing import Any, Optional
 
+import boto3
+
+from .s3_io import parse_s3_uri
+from .config import MODEL_MIN_CONFIDENCE
+
+MODEL_S3_URI = ""
+MODEL_PATH_OVERRIDE: Optional[str] = None
+MODEL_AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
+MODEL_S3_CLIENT: Any = None
+MODEL_FALLBACK_MIN_CONFIDENCE = MODEL_MIN_CONFIDENCE
+MODEL_DETECTOR: Any = None
+_MODEL_LOCK = threading.Lock()
+_INFERENCE_LOCK = threading.Lock()
+
+
+def configure_model(
+    s3_uri: str,
+    path_override: Optional[str],
+    region: str,
+    s3_client: Any = None,
+    minimum_confidence: float = MODEL_MIN_CONFIDENCE,
+) -> None:
+    global MODEL_AWS_REGION, MODEL_DETECTOR, MODEL_FALLBACK_MIN_CONFIDENCE
+    global MODEL_PATH_OVERRIDE, MODEL_S3_CLIENT, MODEL_S3_URI
+    MODEL_S3_URI = s3_uri.strip()
+    MODEL_PATH_OVERRIDE = path_override
+    MODEL_AWS_REGION = region
+    MODEL_S3_CLIENT = s3_client
+    MODEL_FALLBACK_MIN_CONFIDENCE = minimum_confidence
+    MODEL_DETECTOR = None
+
+
+def _model_line_inputs(blocks: list[dict]) -> list[tuple[str, list[tuple[int, int, dict]]]]:
+    words_by_id = {
+        block["Id"]: block
+        for block in blocks
+        if block.get("BlockType") == "WORD" and block.get("Id")
+    }
+    lines: list[tuple[str, list[tuple[int, int, dict]]]] = []
+    for line in blocks:
+        if line.get("BlockType") != "LINE":
+            continue
+        line_words = [
+            words_by_id[word_id]
+            for relationship in line.get("Relationships", [])
+            if relationship.get("Type") == "CHILD"
+            for word_id in relationship.get("Ids", [])
+            if word_id in words_by_id
+        ]
+        parts: list[str] = []
+        ranges: list[tuple[int, int, dict]] = []
+        for word in line_words:
+            text = str(word.get("Text", "")).strip()
+            if not text:
+                continue
+            if parts:
+                parts.append(" ")
+            start = sum(len(part) for part in parts)
+            parts.append(text)
+            ranges.append((start, start + len(text), word))
+        text = "".join(parts)
+        if text:
+            lines.append((text, ranges))
+    return lines
+
+
+def _find_model_checkpoint(root: Path) -> Optional[Path]:
+    for config_path in root.rglob("config.json"):
+        checkpoint = config_path.parent
+        if any(checkpoint.glob("pytorch_model*.bin")) or any(checkpoint.glob("model*.safetensors")):
+            return checkpoint
+    return None
+
+
+def _resolve_model_path() -> Path:
+    if MODEL_PATH_OVERRIDE:
+        model_path = Path(MODEL_PATH_OVERRIDE).expanduser()
+        if not model_path.is_dir():
+            raise FileNotFoundError(f"Fallback model checkpoint not found: {model_path}")
+        return model_path
+
+    try:
+        bucket, key = parse_s3_uri(MODEL_S3_URI)
+    except ValueError as error:
+        raise ValueError(f"MODEL_S3_URI must be an S3 URI: {MODEL_S3_URI}") from error
+    if not key:
+        raise ValueError("MODEL_S3_URI must point to a model archive object")
+    s3_client = MODEL_S3_CLIENT or boto3.session.Session(
+        region_name=MODEL_AWS_REGION,
+    ).client("s3")
+    metadata = s3_client.head_object(Bucket=bucket, Key=key)
+    etag = str(metadata.get("ETag", "")).strip('"')
+    cache_id = sha256(f"{MODEL_S3_URI}:{etag}".encode("utf-8")).hexdigest()
+    cache_dir = Path(tempfile.gettempdir()) / "redact_image_model_cache" / cache_id
+    extracted_dir = cache_dir / "model"
+    checkpoint = _find_model_checkpoint(extracted_dir) if extracted_dir.is_dir() else None
+    if checkpoint:
+        return checkpoint
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = cache_dir / "model.tar"
+    s3_client.download_file(bucket, key, str(archive_path))
+    staging_dir = Path(tempfile.mkdtemp(prefix="model_extract_", dir=cache_dir))
+    try:
+        with tarfile.open(archive_path, "r:*") as archive:
+            archive.extractall(staging_dir, filter="data")
+        checkpoint = _find_model_checkpoint(staging_dir)
+        if checkpoint is None:
+            raise FileNotFoundError(
+                f"No Transformers checkpoint (config.json and model weights) found in {MODEL_S3_URI}"
+            )
+        relative_checkpoint = checkpoint.relative_to(staging_dir)
+        os.replace(staging_dir, extracted_dir)
+        return extracted_dir / relative_checkpoint
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
+        archive_path.unlink(missing_ok=True)
+
+
+def _get_model_detector() -> Any:
+    global MODEL_DETECTOR
+    if MODEL_DETECTOR is None:
+        with _MODEL_LOCK:
+            if MODEL_DETECTOR is None:
+                model_path = _resolve_model_path()
+                try:
+                    transformers = importlib.import_module("transformers")
+                except ImportError as error:
+                    raise RuntimeError(
+                        "Model detection requires the optional transformers and torch dependencies."
+                    ) from error
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+                model = transformers.AutoModelForTokenClassification.from_pretrained(
+                    model_path,
+                    local_files_only=True,
+                )
+                accepted_inputs = inspect.signature(model.forward).parameters
+                tokenizer.model_input_names = [
+                    name for name in tokenizer.model_input_names
+                    if name in accepted_inputs
+                ]
+                MODEL_DETECTOR = transformers.pipeline(
+                    "token-classification",
+                    model=model,
+                    tokenizer=tokenizer,
+                    aggregation_strategy="simple",
+                )
+    return MODEL_DETECTOR
+
+
+def model_fallback_detections(
+    blocks: list[dict],
+    words: list[dict],
+    missing_labels: set[str],
+) -> list[dict]:
+    if not missing_labels or not any(
+        block.get("BlockType") == "WORD" and re.search(r"\d", str(block.get("Text", "")))
+        for block in blocks
+    ):
+        return []
+    lines = _model_line_inputs(blocks)
+    if not lines:
+        return []
+    detector = _get_model_detector()
+    with _INFERENCE_LOCK:
+        predictions = detector([text for text, _ in lines], batch_size=16)
+    word_index = {word.get("block_id"): word for word in words if word.get("block_id")}
+    label_map = {"CARD_NUMBER": "CREDIT_CARD", "CVV": "CVV", "EXPIRY": "VALIDITY"}
+    results: dict[tuple[str, str], dict] = {}
+    for line_number, ((_, word_ranges), entities) in enumerate(zip(lines, predictions)):
+        for entity in entities:
+            model_label = str(entity.get("entity_group", ""))
+            if model_label not in missing_labels or model_label not in label_map:
+                continue
+            start, end = entity.get("start"), entity.get("end")
+            if start is None or end is None:
+                continue
+            candidate_words = [
+                word
+                for word_start, word_end, word in word_ranges
+                if word_start < end and word_end > start
+            ]
+            digit_words = [
+                word
+                for word in candidate_words
+                if word.get("BlockType") == "WORD"
+                and word.get("Id") in word_index
+                and re.search(r"\d", str(word.get("Text", "")))
+                and all(
+                    name in word.get("Geometry", {}).get("BoundingBox", {})
+                    for name in ("Left", "Top", "Width", "Height")
+                )
+            ]
+            if not digit_words:
+                continue
+            confidence = float(entity.get("score", 0.0)) * 100
+            if confidence / 100 <= MODEL_FALLBACK_MIN_CONFIDENCE:
+                continue
+            entity_id = f"{line_number}:{start}:{end}:{model_label}"
+            for word in digit_words:
+                result_word = word_index[word["Id"]]
+                key = (label_map[model_label], word["Id"])
+                results[key] = {
+                    "bbox": result_word["bbox"],
+                    "polygon": result_word["polygon"],
+                    "label": label_map[model_label],
+                    "conf": round(confidence, 1),
+                    "block_id": word["Id"],
+                    "entity_id": entity_id,
+                    "fallback": True,
+                }
+    return list(results.values())
