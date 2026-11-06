@@ -1,6 +1,6 @@
 pipeline:
-  name: Build Redaction Batch Processor Glue
-  identifier: Build_Redaction_Batch_Processor_Glue
+  name: Build Redaction UI Backend
+  identifier: Build_Redaction_UI_Backend
   projectIdentifier: RaaS
   orgIdentifier: Payments
   tags: {}
@@ -33,65 +33,31 @@ pipeline:
                   identifier: pytest_unit_test
                   spec:
                     connectorRef: dockerhub
-                    image: python:3.11
+                    image: python:3.12
                     shell: Bash
                     command: |-
-                      apt-get update && \
-                        apt-get install -y zip unzip && \
-                        apt-get clean;
-
-                      python -m pip install --no-cache-dir pytest
-                      cd glue/<+pipeline.variables.moduleName>
+                      cd lambda/<+pipeline.variables.moduleName>
+                      python -m pip install -r requirements-dev.txt
                       export PYTHONPATH="$PWD/src"
-
-                      if grep -R -nE '\.(delete_item|describe_time_to_live|update_time_to_live)[[:space:]]*\(' src/pci_redaction; then
-                        echo "Batch processor must not delete DynamoDB records or administer DynamoDB TTL."
-                        exit 1
-                      fi
-
-                      set +e
-                      pytest tests/unit --junitxml=<+pipeline.variables.TestResultsFileName>
-                      unit_test_exitcd=$?
-                      set -e
+                      python -m pytest tests --junitxml=<+pipeline.variables.TestResultsFileName>
 
                       VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
                       cp "<+pipeline.variables.TestResultsFileName>" $VortexFilename
 
-                      codebase_branch="<+<+codebase.branch>.substring(0,3)>"
-                      if [ "$codebase_branch" = "dev" ] || [ "$codebase_branch" = "rel" ]
-                      then
-                        echo "--------------------"
-                        echo "Sending Test Results to TAAS"
-                        echo "--------------------"
-
-                        curl -F "exectype=Pre-Deploy" \
-                             -F "environment=QA" \
-                             -F "file=@$VortexFilename" \
-                             -k \
-                             "<+variable.TestAutomationAnalyticsSystemBaseUrl>/ingestspecflow"
-
-                        echo "--------------------"
-                      fi
-
                       ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
                       echo "Adding '<+pipeline.variables.TestResultsFileName>' to archive: $ArchiveName"
-                      zip $ArchiveName "<+pipeline.variables.TestResultsFileName>"
+                      python -m zipfile -c "$ArchiveName" "<+pipeline.variables.TestResultsFileName>"
 
                       echo "Uploading archive to Report Portal (<+variable.ReportPortalImportUrl>)"
                       AccessToken="<+secrets.getValue("account.ReportPortalHarnessAccessToken")>"
-                      # curl -F "file=@$ArchiveName" -H "Authorization: Bearer $AccessToken" "<+variable.ReportPortalImportUrl>"
+                      # curl -F "file=@$ArchiveName" -H "Authorization: Bearer $AccessToken" "<+variable.ReportPortalImportUrl>" 
 
                       curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz" -H "Authorization: <+secrets.getValue("account.JFrog_Cloud_API_Token")>"
                       tar -xzf ./ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz
                       cd ./ZephyrUpload-<+variable.ZephyrUploadVersion>
                       pip3 install -r ./ZephyrUpload/requirements.txt
-                      python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction-Glue" -type All -features "../" -junit "../$VortexFilename" -auth "<+secrets.getValue("raas_zephyr_token")>" -userid "<+secrets.getValue("raas_zephyr_userid")>" -noname
+                      python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction" -type All -features "../" -junit "../$VortexFilename" -auth "<+secrets.getValue("raas_zephyr_token")>" -userid "<+secrets.getValue("raas_zephyr_userid")>" -noname
                       cd ..
-
-                      if [ $unit_test_exitcd -ne 0 ]
-                      then
-                        exit $unit_test_exitcd
-                      fi
                     reports:
                       type: JUnit
                       spec:
@@ -99,13 +65,14 @@ pipeline:
                           - "**/*.xml"
                   when:
                     stageStatus: Success
+                  failureStrategies: []
               - parallel:
                   - stepGroup:
-                      name: CxOne Scan RaaS
-                      identifier: CxOne_Scan_RaaS
+                      name: CxOne Scan
+                      identifier: CxOne_Scan
                       template:
-                        templateRef: CxOne_Scan_RaaS
-                        versionLabel: 1.1.0
+                        templateRef: account.CxOne_Scan
+                        versionLabel: 1.0.3
                         templateInputs:
                           variables:
                             - name: SkipScan
@@ -115,7 +82,7 @@ pipeline:
                             - name: MemoryLimit
                               type: String
                               default: 1G
-                              value: 1G
+                              value: <+input>.default(1G).allowedValues(1G,2G,4G,8G,500Mi)
                             - name: ProjectName
                               type: String
                               value: deluxe-development/RaaS/<+<+pipeline.properties.ci.codebase.repoName>.toLowerCase()>
@@ -140,7 +107,7 @@ pipeline:
                               command: sonar-scanner -Dsonar.projectKey="RaaS-<+pipeline.properties.ci.codebase.repoName>" -Dsonar.host.url="https://sonarqube.deluxe.com" -Dsonar.login="<+secrets.getValue("account.sonarqube_access_token")>" -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info -Dsonar.branch.name=<+codebase.branch>
                               resources:
                                 limits:
-                                  memory: 4096Mi
+                                  memory: 4G
                         - step:
                             name: SonarQube Step
                             identifier: SonarQube_Step
@@ -159,24 +126,46 @@ pipeline:
                   identifier: ArchiveSource
                   spec:
                     connectorRef: artifactorydeluxecom
-                    image: dotnet/sdk:10.0
+                    image: python:3.12
                     shell: Bash
                     command: |-
+                      set -e
+
                       apt-get update
-                      apt-get install -y zip
+                      apt-get install -y zip rsync python3 python3-pip
 
                       git diff --name-only HEAD HEAD~1
 
                       export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>
-                      export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
-                      package_root="$PWD"
-                      package_dir="$(mktemp -d)"
 
-                      cp <+pipeline.variables.moduleName>/src/glue_redaction.py "$package_dir/"
-                      cp -R <+pipeline.variables.moduleName>/src/pci_redaction "$package_dir/"
-                      echo "Creating Glue source bundle from the batch processor src directory ..."
-                      (cd "$package_dir" && zip -r "$package_root/$packaged_file" . -x "*/__pycache__/*" "*.pyc")
-                      rm -rf "$package_dir"
+                      MODULE_DIR="lambda/<+pipeline.variables.moduleName>"
+
+                      find "$MODULE_DIR/src" -name '*.py' \
+                        -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
+
+                      echo "Set package version to ${package_version}"
+
+                      export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
+
+                      echo "Installing Python dependencies..."
+                      python3 -m pip install \
+                        --no-cache-dir \
+                        -r "$MODULE_DIR/requirements-dev.txt" \
+                        -t "$MODULE_DIR/src/"
+
+                      echo "Copying libs to lambda source code..."
+                      if [ -d "$MODULE_DIR/tests/libs" ]; then
+                          rsync -r --exclude='*/__pycache__/' \
+                            "$MODULE_DIR/tests/libs/" "$MODULE_DIR/src/"
+                      else
+                          echo "tests/libs directory not found. Skipping library copy."
+                      fi
+
+                      echo "Archiving lambda source code..."
+                      pushd "$MODULE_DIR/src/"
+                      zip -r --move --test "../../../$packaged_file" ./ \
+                        -x "*/__pycache__/*" "*.pyc"
+                      popd
 
                       echo "Package file $packaged_file is ready to be pushed into Artifactory!"
                     outputVariables:
@@ -184,7 +173,6 @@ pipeline:
                       - name: package_version
                   when:
                     stageStatus: Success
-                  failureStrategies: []
               - step:
                   type: ArtifactoryUpload
                   name: PushArtifactory
@@ -219,21 +207,18 @@ pipeline:
     - name: moduleName
       type: String
       description: ""
-      value: batch-processor
+      value: ui-backend
     - name: frameworkName
       type: String
       description: ""
-      value: RaaS-Redaction-Glue
+      value: RaaS-Redaction
     - name: artifactoryRepo
       type: String
       description: ""
       value: deluxe-raas-dl-local
     - name: ProjectName
       type: String
-      value: BatchProcessor
+      value: UIBackend
     - name: TestResultsFileName
       type: String
       value: junitresults.xml
-
-
-
