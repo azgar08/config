@@ -1,40 +1,108 @@
 
-resource "aws_glue_job" "this" {
-  name     = var.glue_job_name
-  role_arn = var.glue_job_role_arn
+locals {
+  account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
+  region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
 
-  glue_version    = var.glue_version
-  execution_class = var.glue_job_execution_class
+  aws_region   = local.region_vars.locals.aws_region
+  environment  = local.environment_vars.locals.environment
+  project_name = local.environment_vars.locals.project_suffix
+  account_name = local.account_vars.locals.account_name
 
-  worker_type       = var.worker_type
-  number_of_workers = var.number_of_workers
+  source = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue-etl"
+}
 
-  timeout     = var.timeout
-  max_retries = var.max_retries
+terraform {
+  source = local.source
+}
 
-  execution_property {
-    max_concurrent_runs = var.glue_job_max_concur
+dependency "common-tags" {
+  config_path = find_in_parent_folders("common-tags")
+}
+
+dependency "iam-batch-processor-glue" {
+  config_path = find_in_parent_folders("pci-redaction/iam/iam-batch-processor-glue")
+}
+
+dependency "s3-pci-ingestion" {
+  config_path = find_in_parent_folders("pci-redaction/s3/s3-pci-ingestion")
+}
+
+dependency "redaction-batch-metadata" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-batch-metadata")
+}
+
+dependency "redaction-image-metadata" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-image-metadata")
+}
+
+dependency "redaction-ui-batch-action-history" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-ui-batch-action-history")
+}
+
+dependency "redaction-ui-image-action-history" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-ui-image-action-history")
+}
+
+dependency "redaction-textractratecontrol" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-textractratecontrol")
+}
+
+inputs = {
+  aws_region   = local.aws_region
+  environment  = local.environment
+  project_name = local.project_name
+  account_name = local.account_name
+
+  # Glue job configuration
+  glue_job_name            = "batch-processor-${local.environment}"
+  glue_job_role_arn        = dependency.iam-batch-processor-glue.outputs.iam_role_arn
+  glue_version             = "5.0"
+  python_version           = "3"
+  glue_job_execution_class = "STANDARD"
+
+  worker_type       = "G.1X"
+  number_of_workers = 2
+
+  glue_job_max_concur = 100
+  timeout             = 60
+  max_retries         = 0
+
+  # Existing S3 bucket
+  s3_glue_bucket = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+
+  # Glue Python entry script
+  glue_script_key = "scripts/batch-processor.py"
+
+  # Python package uploaded to the same S3 bucket
+  glue_extra_libs = [
+    "s3://${dependency.s3-pci-ingestion.outputs.s3_bucket_id}/libs/pci_redaction.zip"
+  ]
+
+  glue_security_cfg   = ""
+  glue_job_connection = []
+
+  # Option A: pass values as Glue job arguments.
+  # Both buckets use the existing S3 bucket.
+  default_arguments = {
+    "--REGION"                       = local.aws_region
+    "--RAW_BUCKET"                   = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+    "--GOLDEN_BUCKET"                = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+
+    "--IMAGE_TRACKING_TABLE"         = dependency.redaction-image-metadata.outputs.dynamodb_table_name
+    "--BATCH_METADATA_TABLE"         = dependency.redaction-batch-metadata.outputs.dynamodb_table_name
+    "--TEXTRACT_RATE_CONTROL_TABLE"  = dependency.redaction-textractratecontrol.outputs.dynamodb_table_name
+
+    "--TEXTRACT_QUOTA_TPS"           = "100"
   }
 
-  command {
-    name            = "glueetl"
-    script_location = local.glue_script_location
-    python_version  = var.python_version
-  }
+  # Not using environment variables for this implementation.
+  glue_driver_env_vars = {}
 
-  default_arguments = local.default_glue_arguments
-
-  security_configuration = (
-    var.glue_security_cfg != "" ? var.glue_security_cfg : null
-  )
-
-  dynamic "connections" {
-    for_each = length(var.glue_job_connection) > 0 ? [var.glue_job_connection] : []
-
-    content {
-      connections = connections.value
+  tags = merge(
+    dependency.common-tags.outputs.common_tags,
+    {
+      "TerraformPath" = path_relative_to_include()
     }
-  }
-
-  tags = var.tags
+  )
 }
