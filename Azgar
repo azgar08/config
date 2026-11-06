@@ -1,9 +1,18 @@
-python -m pip install --no-cache-dir \
-  pytest \
-  -r requirements.txt
+Executing the following command(s):
+set -e
+set +x
+if [ -x "$(command -v git)" ]; then
+  git config --global --add safe.directory '*' || true 
+fi
+set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
 
-cd glue/<+pipeline.variables.moduleName>
+apt-get update
+apt-get install -y zip unzip
+apt-get clean
+
+ccd glue/batch-processor
 
 echo "Installing Batch Processor dependencies..."
 
@@ -23,4 +32,122 @@ fi
 echo "Running unit tests..."
 
 pytest tests/unit -vv -s \
-  --junitxml=<+pipeline.variables.TestResultsFileName>
+  --junitxml=junitresults.xml
+fi
+
+set +e
+pytest tests/unit --junitxml=junitresults.xml
+unit_test_exitcd=$?
+set -e
+
+VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
+cp "junitresults.xml" $VortexFilename
+
+codebase_branch="RAA"
+if [ "$codebase_branch" = "dev" ] || [ "$codebase_branch" = "rel" ]
+then
+  echo "--------------------"
+  echo "Sending Test Results to TAAS"
+  echo "--------------------"
+
+  curl -F "exectype=Pre-Deploy" \
+       -F "environment=QA" \
+       -F "file=@$VortexFilename" \
+       -k \
+       "https://internal-k8s-raastaas-taasserv-298e9a08a3-1950398463.us-east-1.elb.amazonaws.com/ingestspecflow"
+
+  echo "--------------------"
+fi
+
+ArchiveName="RaaS_BatchProcessor_PreDeploy.zip"
+echo "Adding 'junitresults.xml' to archive: $ArchiveName"
+zip $ArchiveName "junitresults.xml"
+
+echo "Uploading archive to Report Portal (https://reportportal.deluxe.com/api/v1/RAAS/launch/import)"
+AccessToken="**************"
+# curl -F "file=@$ArchiveName" -H "Authorization: ************** "https://reportportal.deluxe.com/api/v1/RAAS/launch/import"
+
+curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-current.tar.gz" -H "Authorization: ************** -xzf ./ZephyrUpload-current.tar.gz
+cd ./ZephyrUpload-current
+pip3 install -r ./ZephyrUpload/requirements.txt
+python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction-Glue" -type All -features "../" -junit "../$VortexFilename" -auth "**************" -userid "1" -noname
+cd ..
+
+if [ $unit_test_exitcd -ne 0 ]
+then
+  exit $unit_test_exitcd
+fi
+Hit:1 http://deb.debian.org/debian trixie InRelease
+
+Get:2 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
+
+Get:3 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
+
+Get:4 http://deb.debian.org/debian trixie/main amd64 Packages [9678 kB]
+
+Get:5 http://deb.debian.org/debian trixie-updates/main amd64 Packages [1108 B]
+
+Get:6 http://deb.debian.org/debian-security trixie-security/main amd64 Packages [298 kB]
+
+Fetched 10.1 MB in 1s (12.9 MB/s)
+
+Reading package lists...
+
+Reading package lists...
+
+Building dependency tree...
+
+Reading state information...
+
+unzip is already the newest version (6.0-29+deb13u1).
+
+The following NEW packages will be installed:
+
+  zip
+
+0 upgraded, 1 newly installed, 0 to remove and 17 not upgraded.
+
+Need to get 235 kB of archives.
+
+After this operation, 642 kB of additional disk space will be used.
+
+Get:1 http://deb.debian.org/debian trixie/main amd64 zip amd64 3.0-15+deb13u1 [235 kB]
+
+Fetched 235 kB in 0s (5135 kB/s)
+
+Selecting previously unselected package zip.
+
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 26756 files and directories currently installed.)
+
+Preparing to unpack .../zip_3.0-15+deb13u1_amd64.deb ...
+
+Unpacking zip (3.0-15+deb13u1) ...
+
+Setting up zip (3.0-15+deb13u1) ...
+
+bash: line 14: ccd: command not found
+
+could not find any files matching the provided report path
+Number of cases parsed in each file: map[]
+parsed 0 test cases
