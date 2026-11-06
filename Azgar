@@ -1,42 +1,66 @@
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+# Package version
+export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
+
+MODULE_DIR="glue/batch-processor"
+PACKAGE_DIR="$(mktemp -d)"
+export packaged_file="batch-processor-${package_version}.zip"
+
+trap 'rm -rf "$PACKAGE_DIR"' EXIT
+
 echo "Installing ZIP utilities..."
-apt-get update
-apt-get install -y zip unzip
+apt-get update -qq
+apt-get install -y -qq zip unzip
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-echo "Preparing CPU-only PyTorch requirements..."
+echo "Validating source..."
+test -f "$MODULE_DIR/src/glue_redaction.py"
+test -d "$MODULE_DIR/src/pci_redaction"
+test -f "$MODULE_DIR/requirements.txt"
 
-TEMP_REQUIREMENTS="$PACKAGE_ROOT/requirements-cpu.txt"
+python --version
 
-sed 's/^torch==2\.5\.1$/torch==2.5.1+cpu/' \
-  "$MODULE_DIR/requirements.txt" > "$TEMP_REQUIREMENTS"
+echo "Preparing CPU-only requirements..."
+grep -vE '^[[:space:]]*torch([=<>!~[:space:]]|$)' \
+  "$MODULE_DIR/requirements.txt" > "$PACKAGE_DIR/requirements.txt"
 
-echo "Installing Python dependencies..."
+echo "torch==2.5.1+cpu" >> "$PACKAGE_DIR/requirements.txt"
 
-python -m pip install \
-  --no-cache-dir \
+echo "Installing dependencies..."
+python -m pip install --no-cache-dir \
   --target "$PACKAGE_DIR" \
   --index-url https://download.pytorch.org/whl/cpu \
   --extra-index-url https://pypi.org/simple \
-  -r "$TEMP_REQUIREMENTS"
+  -r "$PACKAGE_DIR/requirements.txt"
 
-rm -f "$TEMP_REQUIREMENTS"
-
-echo "Validating PyTorch installation..."
-
+echo "Validating dependencies..."
 PYTHONPATH="$PACKAGE_DIR" python -c \
-  "import torch, transformers; print('PyTorch:', torch.__version__); print('CUDA available:', torch.cuda.is_available()); print('Transformers:', transformers.__version__)"
+  "import torch, transformers; print('Torch:', torch.__version__); print('Transformers:', transformers.__version__); assert '+cpu' in torch.__version__"
 
-echo "Copying Glue application source..."
-
+echo "Copying Glue source..."
 cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
 cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
 
-echo "Creating deployment ZIP..."
-
-(cd "$PACKAGE_DIR" && zip -1 -q -r "$PACKAGE_ROOT/$packaged_file" . \
-  -x "*/__pycache__/*" "*.pyc" "*.pyo")
+echo "Creating ZIP..."
+(
+  cd "$PACKAGE_DIR"
+  zip -1 -q -r "$OLDPWD/$packaged_file" . \
+    -x "*/__pycache__/*" "*.pyc" "*.pyo" "requirements.txt"
+)
 
 echo "Validating ZIP..."
+unzip -t "$packaged_file" >/dev/null
+test -s "$packaged_file"
 
-unzip -t "$packaged_file" > /dev/null
+ls -lh "$packaged_file"
+
+echo "packaged_file $packaged_file" >> /addon/tmp/ArchiveSource.out
+echo "package_version $package_version" >> /addon/tmp/ArchiveSource.out
+
+echo "Build package completed successfully."
