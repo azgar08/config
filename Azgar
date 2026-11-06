@@ -1,224 +1,41 @@
-pipeline:
-  name: Build Redaction UI Backend
-  identifier: Build_Redaction_UI_Backend
-  projectIdentifier: RaaS
-  orgIdentifier: Payments
-  tags: {}
-  properties:
-    ci:
-      codebase:
-        connectorRef: BitbucketCloud
-        repoName: raas-pciredactionbackend
-        build: <+input>
-  stages:
-    - stage:
-        name: Build
-        identifier: Build
-        type: CI
-        spec:
-          cloneCodebase: true
-          infrastructure:
-            type: KubernetesDirect
-            spec:
-              connectorRef: account.prodk8sdelegate4xlarge
-              namespace: harness-delegate-ng
-              automountServiceAccountToken: true
-              nodeSelector: {}
-              os: Linux
-          execution:
-            steps:
-              - step:
-                  type: Run
-                  name: Pytest Unit Test
-                  identifier: pytest_unit_test
-                  spec:
-                    connectorRef: dockerhub
-                    image: python:3.12
-                    shell: Bash
-                    command: |-
-                      cd lambda/<+pipeline.variables.moduleName>
-                      python -m pip install -r requirements-dev.txt
-                      export PYTHONPATH="$PWD/src"
-                      python -m pytest tests --junitxml=<+pipeline.variables.TestResultsFileName>
+set -euo pipefail
 
-                      VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
-                      cp "<+pipeline.variables.TestResultsFileName>" $VortexFilename
+apt-get update
+apt-get install -y zip
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 
-                      ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
-                      echo "Adding '<+pipeline.variables.TestResultsFileName>' to archive: $ArchiveName"
-                      python -m zipfile -c "$ArchiveName" "<+pipeline.variables.TestResultsFileName>"
+export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
 
-                      echo "Uploading archive to Report Portal (<+variable.ReportPortalImportUrl>)"
-                      AccessToken="<+secrets.getValue("account.ReportPortalHarnessAccessToken")>"
-                      # curl -F "file=@$ArchiveName" -H "Authorization: Bearer $AccessToken" "<+variable.ReportPortalImportUrl>" 
+MODULE_DIR="glue/<+pipeline.variables.moduleName>"
+PACKAGE_ROOT="$PWD"
+PACKAGE_DIR="$(mktemp -d)"
 
-                      curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz" -H "Authorization: <+secrets.getValue("account.JFrog_Cloud_API_Token")>"
-                      tar -xzf ./ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz
-                      cd ./ZephyrUpload-<+variable.ZephyrUploadVersion>
-                      pip3 install -r ./ZephyrUpload/requirements.txt
-                      python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction" -type All -features "../" -junit "../$VortexFilename" -auth "<+secrets.getValue("raas_zephyr_token")>" -userid "<+secrets.getValue("raas_zephyr_userid")>" -noname
-                      cd ..
-                    reports:
-                      type: JUnit
-                      spec:
-                        paths:
-                          - "**/*.xml"
-                  when:
-                    stageStatus: Success
-                  failureStrategies: []
-              - parallel:
-                  - stepGroup:
-                      name: CxOne Scan
-                      identifier: CxOne_Scan
-                      template:
-                        templateRef: account.CxOne_Scan
-                        versionLabel: 1.0.3
-                        templateInputs:
-                          variables:
-                            - name: SkipScan
-                              type: String
-                              default: "Yes"
-                              value: "No"
-                            - name: MemoryLimit
-                              type: String
-                              default: 1G
-                              value: <+input>.default(1G).allowedValues(1G,2G,4G,8G,500Mi)
-                            - name: ProjectName
-                              type: String
-                              value: deluxe-development/RaaS/<+<+pipeline.properties.ci.codebase.repoName>.toLowerCase()>
-                            - name: EnforcePolicy
-                              type: String
-                              value: "Yes"
-                            - name: SkipScaScan
-                              type: String
-                              value: "No"
-                  - stepGroup:
-                      name: SonarQube Scan
-                      identifier: SonarQube_Scan
-                      steps:
-                        - step:
-                            type: Run
-                            name: SonarQube Run
-                            identifier: SonarQube_Run
-                            spec:
-                              connectorRef: dockerhub
-                              image: sonarsource/sonar-scanner-cli
-                              shell: Sh
-                              command: sonar-scanner -Dsonar.projectKey="RaaS-<+pipeline.properties.ci.codebase.repoName>" -Dsonar.host.url="https://sonarqube.deluxe.com" -Dsonar.login="<+secrets.getValue("account.sonarqube_access_token")>" -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info -Dsonar.branch.name=<+codebase.branch>
-                              resources:
-                                limits:
-                                  memory: 4G
-                        - step:
-                            name: SonarQube Step
-                            identifier: SonarQube_Step
-                            template:
-                              templateRef: account.SonarQube_Step
-                              versionLabel: 1.0.0
-                              gitBranch: develop
-                              templateInputs:
-                                type: Sonarqube
-                                spec:
-                                  tool:
-                                    project_key: RaaS-<+pipeline.properties.ci.codebase.repoName>
-              - step:
-                  type: Run
-                  name: ArchiveSource
-                  identifier: ArchiveSource
-                  spec:
-                    connectorRef: artifactorydeluxecom
-                    image: python:3.12
-                    shell: Bash
-                    command: |-
-                      set -e
+export packaged_file="<+pipeline.variables.moduleName>-${package_version}.zip"
 
-                      apt-get update
-                      apt-get install -y zip rsync python3 python3-pip
+trap 'rm -rf "$PACKAGE_DIR"' EXIT
 
-                      git diff --name-only HEAD HEAD~1
+echo "Installing runtime dependencies..."
 
-                      export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>
+python -m pip install \
+  --no-cache-dir \
+  --target "$PACKAGE_DIR" \
+  -r "$MODULE_DIR/requirements.txt"
 
-                      MODULE_DIR="lambda/<+pipeline.variables.moduleName>"
+echo "Copying Glue application source..."
 
-                      find "$MODULE_DIR/src" -name '*.py' \
-                        -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
+cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
 
-                      echo "Set package version to ${package_version}"
+cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
 
-                      export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
+echo "Creating deployment ZIP..."
 
-                      echo "Installing Python dependencies..."
-                      python3 -m pip install \
-                        --no-cache-dir \
-                        -r "$MODULE_DIR/requirements-dev.txt" \
-                        -t "$MODULE_DIR/src/"
+(cd "$PACKAGE_DIR" && zip -r "$PACKAGE_ROOT/$packaged_file" . \
+  -x "*/__pycache__/*" "*.pyc")
 
-                      echo "Copying libs to lambda source code..."
-                      if [ -d "$MODULE_DIR/tests/libs" ]; then
-                          rsync -r --exclude='*/__pycache__/' \
-                            "$MODULE_DIR/tests/libs/" "$MODULE_DIR/src/"
-                      else
-                          echo "tests/libs directory not found. Skipping library copy."
-                      fi
+echo "Validating deployment ZIP..."
 
-                      echo "Archiving lambda source code..."
-                      pushd "$MODULE_DIR/src/"
-                      zip -r --move --test "../../../$packaged_file" ./ \
-                        -x "*/__pycache__/*" "*.pyc"
-                      popd
+unzip -t "$packaged_file"
 
-                      echo "Package file $packaged_file is ready to be pushed into Artifactory!"
-                    outputVariables:
-                      - name: packaged_file
-                      - name: package_version
-                  when:
-                    stageStatus: Success
-              - step:
-                  type: ArtifactoryUpload
-                  name: PushArtifactory
-                  identifier: PushArtifactory
-                  spec:
-                    connectorRef: account.artifactoryconnector
-                    target: <+pipeline.variables.artifactoryRepo>/<+pipeline.variables.frameworkName>/
-                    sourcePath: ./<+steps.ArchiveSource.output.outputVariables.packaged_file>
-                  when:
-                    stageStatus: Success
-                  failureStrategies: []
-          serviceDependencies:
-            - identifier: dind
-              name: dind
-              type: Service
-              spec:
-                connectorRef: artifactorydeluxecom
-                image: docker:dind
-                privileged: true
-          sharedPaths:
-            - /var/run
-            - /shared/scan_results
-  variables:
-    - name: bb_repoName
-      type: String
-      description: ""
-      value: raas-pciredactionbackend
-    - name: packageVersion
-      type: String
-      description: ""
-      value: "0.2"
-    - name: moduleName
-      type: String
-      description: ""
-      value: ui-backend
-    - name: frameworkName
-      type: String
-      description: ""
-      value: RaaS-Redaction
-    - name: artifactoryRepo
-      type: String
-      description: ""
-      value: deluxe-raas-dl-local
-    - name: ProjectName
-      type: String
-      value: UIBackend
-    - name: TestResultsFileName
-      type: String
-      value: junitresults.xml
+echo "Package: $packaged_file"
+echo "Version: $package_version"
