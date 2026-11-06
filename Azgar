@@ -1,90 +1,41 @@
-
 set -euo pipefail
 
-export DEBIAN_FRONTEND=noninteractive
-
 apt-get update
-apt-get install -y zip unzip
+apt-get install -y zip
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-cd glue/<+pipeline.variables.moduleName>
+export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
 
-echo "Installing Batch Processor dependencies..."
+MODULE_DIR="glue/<+pipeline.variables.moduleName>"
+PACKAGE_ROOT="$PWD"
+PACKAGE_DIR="$(mktemp -d)"
 
-python -m pip install --no-cache-dir \
-  pytest \
-  -r requirements.txt
+export packaged_file="<+pipeline.variables.moduleName>-${package_version}.zip"
 
-export PYTHONPATH="$PWD/src"
+trap 'rm -rf "$PACKAGE_DIR"' EXIT
 
-echo "Checking prohibited DynamoDB operations..."
+echo "Installing runtime dependencies..."
 
-if grep -R -nE '\.(delete_item|describe_time_to_live|update_time_to_live)[[:space:]]*\(' src; then
-  echo "Batch processor must not delete DynamoDB records or administer DynamoDB TTL."
-  exit 1
-fi
+python -m pip install \
+  --no-cache-dir \
+  --target "$PACKAGE_DIR" \
+  -r "$MODULE_DIR/requirements.txt"
 
-echo "Running unit tests..."
+echo "Copying Glue application source..."
 
-set +e
-python -m pytest tests/unit -vv -s \
-  --junitxml=<+pipeline.variables.TestResultsFileName>
+cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
 
-unit_test_exitcd=$?
-set -e
+cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
 
-echo "Pytest exit code: $unit_test_exitcd"
+echo "Creating deployment ZIP..."
 
-VortexFilename="result.$(date +"%Y.%m.%d-%H.%M.%S").xml"
+(cd "$PACKAGE_DIR" && zip -r "$PACKAGE_ROOT/$packaged_file" . \
+  -x "*/__pycache__/*" "*.pyc")
 
-if [ -f "<+pipeline.variables.TestResultsFileName>" ]; then
-  cp "<+pipeline.variables.TestResultsFileName>" "$VortexFilename"
-else
-  echo "JUnit report was not generated!"
-  exit 1
-fi
+echo "Validating deployment ZIP..."
 
-codebase_branch="<+<+codebase.branch>.substring(0,3)>"
+unzip -t "$packaged_file"
 
-if [ "$codebase_branch" = "dev" ] || [ "$codebase_branch" = "rel" ]; then
-  echo "Sending Test Results to TAAS"
-
-  curl -F "exectype=Pre-Deploy" \
-       -F "environment=QA" \
-       -F "file=@$VortexFilename" \
-       -k \
-       "<+variable.TestAutomationAnalyticsSystemBaseUrl>/ingestspecflow"
-fi
-
-ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
-
-zip "$ArchiveName" "<+pipeline.variables.TestResultsFileName>"
-
-echo "Uploading test results to Zephyr..."
-
-curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz" \
-  -H "Authorization: <+secrets.getValue("account.JFrog_Cloud_API_Token")>"
-
-tar -xzf "./ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz"
-
-cd "./ZephyrUpload-<+variable.ZephyrUploadVersion>"
-
-pip3 install -r ./ZephyrUpload/requirements.txt
-
-python3 ZephyrUpload \
-  "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction-Glue" \
-  -type All \
-  -features "../" \
-  -junit "../$VortexFilename" \
-  -auth "<+secrets.getValue("raas_zephyr_token")>" \
-  -userid "<+secrets.getValue("raas_zephyr_userid")>" \
-  -noname
-
-cd ..
-
-if [ "$unit_test_exitcd" -ne 0 ]; then
-  exit "$unit_test_exitcd"
-fi
-
-echo "Unit tests completed successfully."
+echo "Package: $packaged_file"
+echo "Version: $package_version"
