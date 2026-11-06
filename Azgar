@@ -1,38 +1,37 @@
 locals {
-  environment_vars  = read_terragrunt_config(find_in_parent_folders("env.hcl"))
-  environment       = lower(local.environment_vars.locals.environment)
-  region_vars       = read_terragrunt_config(find_in_parent_folders("region.hcl"))
-  aws_region        = lower(local.region_vars.locals.aws_region)
-  account_vars      = read_terragrunt_config(find_in_parent_folders("account.hcl"))
-  aws_account_id    = lower(local.account_vars.locals.aws_account_id)
+  glue_script_location = "s3://${var.s3_glue_bucket}/${var.glue_script_key}"
 
-  source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//api-gateway-restapi"
-}
+  glue_driver_env_vars = length(var.glue_driver_env_vars) > 0 ? {
+    "--customer-driver-env-vars" = join(",", [
+      for key in sort(keys(var.glue_driver_env_vars)) :
+      "${key}=${var.glue_driver_env_vars[key]}"
+    ])
+  } : {}
 
-dependency "common-tags" {
-  config_path = find_in_parent_folders("common-tags")
-}
+  glue_temp_args = {
+    "--TempDir" = "s3://${var.s3_glue_bucket}/temp/"
+  }
 
-dependency "pci-vpc-endpoint" {
-  config_path = find_in_parent_folders("_global/pci-vpc-endpoint")
-}
+  glue_extra_lib_args = length(var.glue_extra_libs) > 0 ? {
+    "--extra-py-files" = join(",", var.glue_extra_libs)
+  } : {}
 
-inputs = {
-  api_name          = "dlx-r360plus-ui-backend-api-${local.environment}"
-  api_description   = "UI Backend Platform API"
-  stage_name        = "${local.environment}"
-  lambda_invoke_arn = "arn:aws:lambda:us-east-1:${local.aws_account_id}:function:dlx-r360plus-redaction-ui-backend-lambda-${local.environment}"
-  vpc_endpoint_ids = [
-    dependency.pci-vpc-endpoint.outputs.vpc_endpoint_id
-  ]
+  default_glue_arguments = merge(
+    {
+      "--job-language"                     = "python"
+      "--enable-metrics"                   = "true"
+      "--enable-continuous-cloudwatch-log"  = "true"
+      "--enable-glue-datacatalog"           = "true"
+    },
+    local.glue_temp_args,
+    local.glue_extra_lib_args,
+    local.glue_driver_env_vars,
+    var.default_arguments
+  )
 
-  http_methods = [
-    "GET",
-    "POST"
-  ]
-
-  # Set this according to your approved security design.
-  authorization_type = "NONE"
-
-  tags = merge(dependency.common-tags.outputs.common_tags, { "TerraformPath" = path_relative_to_include() })
+  common_tags = merge(var.tags, {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+  })
 }
