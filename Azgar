@@ -1,71 +1,239 @@
+pipeline:
+  name: Build Redaction Batch Processor Glue
+  identifier: Build_Redaction_Batch_Processor_Glue
+  projectIdentifier: RaaS
+  orgIdentifier: Payments
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: BitbucketCloud
+        repoName: raas-pciredactionbackend
+        build: <+input>
+  stages:
+    - stage:
+        name: Build
+        identifier: Build
+        type: CI
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: account.prodk8sdelegate4xlarge
+              namespace: harness-delegate-ng
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Pytest Unit Test
+                  identifier: pytest_unit_test
+                  spec:
+                    connectorRef: dockerhub
+                    image: python:3.11
+                    shell: Bash
+                    command: |-
+                      apt-get update && \
+                        apt-get install -y zip unzip && \
+                        apt-get clean;
 
-locals {
-  account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
-  region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
-  environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+                      python -m pip install --no-cache-dir pytest
+                      cd glue/<+pipeline.variables.moduleName>
+                      export PYTHONPATH="$PWD/src"
 
-  aws_region   = local.region_vars.locals.aws_region
-  environment  = local.environment_vars.locals.environment
-  project_name = local.environment_vars.locals.project_suffix
-  account_name = local.account_vars.locals.account_name
+                      if grep -R -nE '\.(delete_item|describe_time_to_live|update_time_to_live)[[:space:]]*\(' src/pci_redaction; then
+                        echo "Batch processor must not delete DynamoDB records or administer DynamoDB TTL."
+                        exit 1
+                      fi
 
-  source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue"
-}
+                      set +e
+                      pytest tests/unit --junitxml=<+pipeline.variables.TestResultsFileName>
+                      unit_test_exitcd=$?
+                      set -e
 
-dependency "common-tags" {
-  config_path = find_in_parent_folders("common-tags")
-}
+                      VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
+                      cp "<+pipeline.variables.TestResultsFileName>" $VortexFilename
 
-dependency "iam-batch-processor-glue" {
-  config_path = find_in_parent_folders("pci-redaction/iam/iam-batch-processor-glue")
-}
+                      codebase_branch="<+<+codebase.branch>.substring(0,3)>"
+                      if [ "$codebase_branch" = "dev" ] || [ "$codebase_branch" = "rel" ]
+                      then
+                        echo "--------------------"
+                        echo "Sending Test Results to TAAS"
+                        echo "--------------------"
 
-inputs = {
-  aws_region    = local.aws_region
-  environment   = local.environment
-  project_name  = local.project_name
-  account_name  = local.account_name
+                        curl -F "exectype=Pre-Deploy" \
+                             -F "environment=QA" \
+                             -F "file=@$VortexFilename" \
+                             -k \
+                             "<+variable.TestAutomationAnalyticsSystemBaseUrl>/ingestspecflow"
 
-  # Glue job configuration
-  glue_job_name            = ["batch-processor"]
-  glue_job_role_arn        = dependency.iam-batch-processor-glue.outputs.iam_role_arn
-  glue_job_max_concur      = "100"
-  glue_job_execution_class = "STANDARD"
+                        echo "--------------------"
+                      fi
 
-  # S3 and KMS configuration
-  s3_glue_script_bucket = "" # Add script bucket name
-  encryption_kms        = "" # Add KMS key ARN
+                      ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
+                      echo "Adding '<+pipeline.variables.TestResultsFileName>' to archive: $ArchiveName"
+                      zip $ArchiveName "<+pipeline.variables.TestResultsFileName>"
 
-  # Glue security configuration
-  enable_security_cfg = true
-  create_security_cfg = false
-  glue_security_cfg   = "" # Add existing security configuration name
+                      echo "Uploading archive to Report Portal (<+variable.ReportPortalImportUrl>)"
+                      AccessToken="<+secrets.getValue("account.ReportPortalHarnessAccessToken")>"
+                      # curl -F "file=@$ArchiveName" -H "Authorization: Bearer $AccessToken" "<+variable.ReportPortalImportUrl>"
 
-  # Glue connection
-  glue_job_connection = []
+                      curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz" -H "Authorization: <+secrets.getValue("account.JFrog_Cloud_API_Token")>"
+                      tar -xzf ./ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz
+                      cd ./ZephyrUpload-<+variable.ZephyrUploadVersion>
+                      pip3 install -r ./ZephyrUpload/requirements.txt
+                      python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction-Glue" -type All -features "../" -junit "../$VortexFilename" -auth "<+secrets.getValue("raas_zephyr_token")>" -userid "<+secrets.getValue("raas_zephyr_userid")>" -noname
+                      cd ..
 
-  # CloudWatch logging
-  glue_log_group_retention_days = local.environment_vars.locals.cw_log_retention_in_days
+                      if [ $unit_test_exitcd -ne 0 ]
+                      then
+                        exit $unit_test_exitcd
+                      fi
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - "**/*.xml"
+                  when:
+                    stageStatus: Success
+              - parallel:
+                  - stepGroup:
+                      name: CxOne Scan RaaS
+                      identifier: CxOne_Scan_RaaS
+                      template:
+                        templateRef: CxOne_Scan_RaaS
+                        versionLabel: 1.1.0
+                        templateInputs:
+                          variables:
+                            - name: SkipScan
+                              type: String
+                              default: "Yes"
+                              value: "No"
+                            - name: MemoryLimit
+                              type: String
+                              default: 1G
+                              value: 1G
+                            - name: ProjectName
+                              type: String
+                              value: deluxe-development/RaaS/<+<+pipeline.properties.ci.codebase.repoName>.toLowerCase()>
+                            - name: EnforcePolicy
+                              type: String
+                              value: "Yes"
+                            - name: SkipScaScan
+                              type: String
+                              value: "No"
+                  - stepGroup:
+                      name: SonarQube Scan
+                      identifier: SonarQube_Scan
+                      steps:
+                        - step:
+                            type: Run
+                            name: SonarQube Run
+                            identifier: SonarQube_Run
+                            spec:
+                              connectorRef: dockerhub
+                              image: sonarsource/sonar-scanner-cli
+                              shell: Sh
+                              command: sonar-scanner -Dsonar.projectKey="RaaS-<+pipeline.properties.ci.codebase.repoName>" -Dsonar.host.url="https://sonarqube.deluxe.com" -Dsonar.login="<+secrets.getValue("account.sonarqube_access_token")>" -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info -Dsonar.branch.name=<+codebase.branch>
+                              resources:
+                                limits:
+                                  memory: 4096Mi
+                        - step:
+                            name: SonarQube Step
+                            identifier: SonarQube_Step
+                            template:
+                              templateRef: account.SonarQube_Step
+                              versionLabel: 1.0.0
+                              gitBranch: develop
+                              templateInputs:
+                                type: Sonarqube
+                                spec:
+                                  tool:
+                                    project_key: RaaS-<+pipeline.properties.ci.codebase.repoName>
+              - step:
+                  type: Run
+                  name: ArchiveSource
+                  identifier: ArchiveSource
+                  spec:
+                    connectorRef: artifactorydeluxecom
+                    image: dotnet/sdk:10.0
+                    shell: Bash
+                    command: |-
+                      apt-get update
+                      apt-get install -y zip
 
-  # Additional Python libraries
-  glue_extra_libs = []
+                      git diff --name-only HEAD HEAD~1
 
-  # S3 asset and temporary buckets
-  s3_glue_asset_bucket = ""
-  s3_glue_tmp_bucket   = ""
+                      export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>
+                      export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
+                      package_root="$PWD"
+                      package_dir="$(mktemp -d)"
 
-  # DynamoDB table names and Glue driver environment variables
-  glue_driver_env_vars = {
-    "CUSTOMER_ENVIRONMENT" = local.environment
-    "CUSTOMER_AWS_REGION"  = local.aws_region
+                      cp <+pipeline.variables.moduleName>/src/glue_redaction.py "$package_dir/"
+                      cp -R <+pipeline.variables.moduleName>/src/pci_redaction "$package_dir/"
+                      echo "Creating Glue source bundle from the batch processor src directory ..."
+                      (cd "$package_dir" && zip -r "$package_root/$packaged_file" . -x "*/__pycache__/*" "*.pyc")
+                      rm -rf "$package_dir"
 
-    "CUSTOMER_BATCH_METADATA_TABLE"  = "redact_batch_metadata"
-    "CUSTOMER_BATCH_INITIATOR_TABLE" = "redaction_batch_initiator"
-    "CUSTOMER_BATCH_STATUS_TABLE"    = "redaction_batch_status"
-  }
+                      echo "Package file $packaged_file is ready to be pushed into Artifactory!"
+                    outputVariables:
+                      - name: packaged_file
+                      - name: package_version
+                  when:
+                    stageStatus: Success
+                  failureStrategies: []
+              - step:
+                  type: ArtifactoryUpload
+                  name: PushArtifactory
+                  identifier: PushArtifactory
+                  spec:
+                    connectorRef: account.artifactoryconnector
+                    target: <+pipeline.variables.artifactoryRepo>/<+pipeline.variables.frameworkName>/
+                    sourcePath: ./<+steps.ArchiveSource.output.outputVariables.packaged_file>
+                  when:
+                    stageStatus: Success
+                  failureStrategies: []
+          serviceDependencies:
+            - identifier: dind
+              name: dind
+              type: Service
+              spec:
+                connectorRef: artifactorydeluxecom
+                image: docker:dind
+                privileged: true
+          sharedPaths:
+            - /var/run
+            - /shared/scan_results
+  variables:
+    - name: bb_repoName
+      type: String
+      description: ""
+      value: raas-pciredactionbackend
+    - name: packageVersion
+      type: String
+      description: ""
+      value: "0.2"
+    - name: moduleName
+      type: String
+      description: ""
+      value: batch-processor
+    - name: frameworkName
+      type: String
+      description: ""
+      value: RaaS-Redaction-Glue
+    - name: artifactoryRepo
+      type: String
+      description: ""
+      value: deluxe-raas-dl-local
+    - name: ProjectName
+      type: String
+      value: BatchProcessor
+    - name: TestResultsFileName
+      type: String
+      value: junitresults.xml
 
-  # Common tags
-  tags = merge(dependency.common-tags.outputs.common_tags, {
-    "TerraformPath" = path_relative_to_include()
-  })
-}
+
+
