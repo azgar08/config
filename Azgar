@@ -1,24 +1,77 @@
-output "glue_job_name" {
-  description = "Created Glue job name"
-  value       = aws_glue_job.this.name
+terraform {
+  source = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue-etl"
 }
 
-output "glue_job_arn" {
-  description = "Created Glue job ARN"
-  value       = aws_glue_job.this.arn
+locals {
+  account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
+  region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+
+  aws_region   = local.region_vars.locals.aws_region
+  environment  = lower(local.environment_vars.locals.environment)
+  project_name = local.environment_vars.locals.project_suffix
+  account_name = local.account_vars.locals.account_name
 }
 
-output "glue_job_role_arn" {
-  description = "Glue execution role ARN"
-  value       = aws_glue_job.this.role_arn
+dependency "common-tags" {
+  config_path = find_in_parent_folders("common-tags")
 }
 
-output "glue_job_execution_class" {
-  description = "Glue job execution class"
-  value       = aws_glue_job.this.execution_class
+dependency "iam-batch-processor-glue" {
+  config_path = find_in_parent_folders("pci-redaction/iam/iam-batch-processor-glue")
 }
 
-output "glue_script_location" {
-  description = "Glue script S3 location"
-  value       = aws_glue_job.this.command[0].script_location
+inputs = {
+  aws_region   = local.aws_region
+  environment  = local.environment
+  project_name = local.project_name
+  account_name = local.account_name
+
+  # Glue ETL job configuration
+  glue_job_name            = "batch-processor-${local.environment}"
+  glue_job_role_arn        = dependency.iam-batch-processor-glue.outputs.iam_role_arn
+  glue_version             = "5.0"
+  python_version           = "3"
+  glue_job_execution_class = "STANDARD"
+
+  # Worker configuration
+  worker_type       = "G.1X"
+  number_of_workers = 2
+
+  # Execution configuration
+  glue_job_max_concur = 100
+  timeout             = 60
+  max_retries         = 0
+
+  # Single existing S3 bucket
+  s3_glue_bucket = "YOUR-PCI-GLUE-BUCKET"
+
+  glue_script_key = "scripts/batch-processor.py"
+
+  # Existing Glue security configuration
+  glue_security_cfg = ""
+
+  # Glue connections
+  glue_job_connection = []
+
+  # Additional Python libraries
+  glue_extra_libs = []
+
+  # DynamoDB table names and environment variables
+  glue_driver_env_vars = {
+    "CUSTOMER_ENVIRONMENT" = local.environment
+    "CUSTOMER_AWS_REGION"  = local.aws_region
+
+    "CUSTOMER_BATCH_METADATA_TABLE"  = "redact_batch_metadata"
+    "CUSTOMER_BATCH_INITIATOR_TABLE" = "redaction_batch_initiator"
+    "CUSTOMER_BATCH_STATUS_TABLE"    = "redaction_batch_status"
+  }
+
+  # Additional Glue arguments
+  default_arguments = {}
+
+  # Common tags
+  tags = merge(dependency.common-tags.outputs.common_tags, {
+    "TerraformPath" = path_relative_to_include()
+  })
 }
