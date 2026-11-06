@@ -1,16 +1,15 @@
-terraform {
-  source = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue-etl"
-}
-
 locals {
   account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
   region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
   environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
 
   aws_region   = local.region_vars.locals.aws_region
-  environment  = lower(local.environment_vars.locals.environment)
+  environment  = local.environment_vars.locals.environment
   project_name = local.environment_vars.locals.project_suffix
   account_name = local.account_vars.locals.account_name
+
+  source = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue-etl"
+
 }
 
 dependency "common-tags" {
@@ -19,6 +18,30 @@ dependency "common-tags" {
 
 dependency "iam-batch-processor-glue" {
   config_path = find_in_parent_folders("pci-redaction/iam/iam-batch-processor-glue")
+}
+
+dependency "redaction-batch-metadata" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-batch-metadata")
+}
+
+dependency "redaction-image-metadata" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-image-metadata")
+}
+
+dependency "redaction-ui-batch-action-history" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-ui-batch-action-history")
+}
+
+dependency "redaction-ui-image-action-history" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-ui-image-action-history")
+}
+
+dependency "redaction-textractratecontrol" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-textractratecontrol")
+}
+
+dependency "s3-pci-ingestion" {
+  config_path = find_in_parent_folders("pci-redaction/s3/s3-pci-ingestion")
 }
 
 inputs = {
@@ -44,7 +67,7 @@ inputs = {
   max_retries         = 0
 
   # Single existing S3 bucket
-  s3_glue_bucket = "YOUR-PCI-GLUE-BUCKET"
+  s3_glue_bucket = dependency.s3-pci-ingestion.outputs.s3_bucket_id
 
   glue_script_key = "scripts/batch-processor.py"
 
@@ -59,12 +82,13 @@ inputs = {
 
   # DynamoDB table names and environment variables
   glue_driver_env_vars = {
-    "CUSTOMER_ENVIRONMENT" = local.environment
-    "CUSTOMER_AWS_REGION"  = local.aws_region
-
-    "CUSTOMER_BATCH_METADATA_TABLE"  = "redact_batch_metadata"
-    "CUSTOMER_BATCH_INITIATOR_TABLE" = "redaction_batch_initiator"
-    "CUSTOMER_BATCH_STATUS_TABLE"    = "redaction_batch_status"
+    CUSTOMER_ENVIRONMENT                = local.environment
+    CUSTOMER_AWS_REGION                 = local.aws_region
+    DYNAMODB_BATCH_TABLE                = dependency.redaction-batch-metadata.outputs.dynamodb_table_name
+    DYNAMODB_IMAGE_TABLE                = dependency.redaction-image-metadata.outputs.dynamodb_table_name
+    DYNAMODB_BATCH_ACTION_HISTORY_TABLE = dependency.redaction-ui-batch-action-history.outputs.dynamodb_table_name
+    DYNAMODB_IMAGE_ACTION_HISTORY_TABLE = dependency.redaction-ui-image-action-history.outputs.dynamodb_table_name
+    DYNAMODB_TEXTRACTRATECONTROL_TABLE  = dependency.redaction-textractratecontrol.outputs.dynamodb_table_name
   }
 
   # Additional Glue arguments
