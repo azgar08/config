@@ -1,65 +1,41 @@
-set -euo pipefail
-
-export DEBIAN_FRONTEND=noninteractive
-
-apt-get update
-apt-get install -y zip unzip
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-
-echo "Preparing Batch Processor package..."
-
-export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
-
-MODULE_DIR="glue/<+pipeline.variables.moduleName>"
-PACKAGE_ROOT="$PWD"
-PACKAGE_DIR="$(mktemp -d)"
-
-export packaged_file="<+pipeline.variables.moduleName>-${package_version}.zip"
-
-trap 'rm -rf "$PACKAGE_DIR"' EXIT
-
-if [ ! -f "$MODULE_DIR/src/glue_redaction.py" ]; then
-  echo "ERROR: glue_redaction.py not found!"
-  exit 1
-fi
-
-if [ ! -d "$MODULE_DIR/src/pci_redaction" ]; then
-  echo "ERROR: pci_redaction directory not found!"
-  exit 1
-fi
-
-if [ ! -f "$MODULE_DIR/requirements.txt" ]; then
-  echo "ERROR: requirements.txt not found!"
-  exit 1
-fi
-
-echo "Installing runtime dependencies..."
-
-python -m pip install \
-  --no-cache-dir \
-  --target "$PACKAGE_DIR" \
-  -r "$MODULE_DIR/requirements.txt"
-
-echo "Copying Glue application source..."
-
-cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
-cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
-cp "$MODULE_DIR/requirements.txt" "$PACKAGE_DIR/"
-
-echo "Creating deployment ZIP..."
-
-(cd "$PACKAGE_DIR" && zip -r "$PACKAGE_ROOT/$packaged_file" . \
-  -x "*/__pycache__/*" "*.pyc" "*.pyo")
-
-echo "Validating deployment ZIP..."
-
-unzip -t "$packaged_file"
-
-if [ ! -s "$packaged_file" ]; then
-  echo "ERROR: Package ZIP is missing or empty!"
-  exit 1
-fi
-
-echo "Package: $packaged_file"
-echo "Version: $package_version"
+$ unzip -l batch-processor-RAAS-57559-ML_Code.0.2.7.zip | head -40
+Archive:  batch-processor-RAAS-57559-ML_Code.0.2.7.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+        0  2026-11-06 14:39   mpmath/
+     8765  2026-11-06 14:39   mpmath/__init__.py
+    15985  2026-11-06 14:39   mpmath/ctx_base.py
+     6572  2026-11-06 14:39   mpmath/ctx_fp.py
+    17211  2026-11-06 14:39   mpmath/ctx_iv.py
+    49452  2026-11-06 14:39   mpmath/ctx_mp.py
+    37815  2026-11-06 14:39   mpmath/ctx_mp_python.py
+   283512  2026-11-06 14:39   mpmath/function_docs.py
+    29253  2026-11-06 14:39   mpmath/identification.py
+    18561  2026-11-06 14:39   mpmath/math2.py
+     5976  2026-11-06 14:39   mpmath/rational.py
+     3029  2026-11-06 14:39   mpmath/usertools.py
+    10627  2026-11-06 14:39   mpmath/visualization.py
+        0  2026-11-06 14:39   mpmath/calculus/
+      162  2026-11-06 14:39   mpmath/calculus/__init__.py
+     8817  2026-11-06 14:39   mpmath/calculus/approximation.py
+      112  2026-11-06 14:39   mpmath/calculus/calculus.py
+    20226  2026-11-06 14:39   mpmath/calculus/differentiation.py
+    73306  2026-11-06 14:39   mpmath/calculus/extrapolation.py
+    36056  2026-11-06 14:39   mpmath/calculus/inverselaplace.py
+     9908  2026-11-06 14:39   mpmath/calculus/odes.py
+    32856  2026-11-06 14:39   mpmath/calculus/optimization.py
+     7877  2026-11-06 14:39   mpmath/calculus/polynomials.py
+    42432  2026-11-06 14:39   mpmath/calculus/quadrature.py
+        0  2026-11-06 14:39   mpmath/functions/
+      330  2026-11-06 14:39   mpmath/functions/__init__.py
+    37938  2026-11-06 14:39   mpmath/functions/bessel.py
+    42237  2026-11-06 14:39   mpmath/functions/elliptic.py
+    11644  2026-11-06 14:39   mpmath/functions/expintegrals.py
+     5273  2026-11-06 14:39   mpmath/functions/factorials.py
+    18100  2026-11-06 14:39   mpmath/functions/functions.py
+    51570  2026-11-06 14:39   mpmath/functions/hypergeometric.py
+    16097  2026-11-06 14:39   mpmath/functions/orthogonal.py
+     7633  2026-11-06 14:39   mpmath/functions/qfunctions.py
+    46184  2026-11-06 14:39   mpmath/functions/rszeta.py
+      703  2026-11-06 14:39   mpmath/functions/signals.py
+    37320  2026-11-06 14:39   mpmath/functions/theta.py
