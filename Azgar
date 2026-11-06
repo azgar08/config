@@ -3,3 +3,9 @@ apt-get install -y zip unzip
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 grep -RInE 'import torch|from torch|AutoModel|AutoTokenizer|pipeline\(' glue/batch-processor/src
+
+$ grep -RInE 'import torch|from torch|AutoModel|AutoTokenizer|pipeline\(' glue/batch-processor/src
+glue/batch-processor/src/pci_redaction/model.py:148:                tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+glue/batch-processor/src/pci_redaction/model.py:149:                model = transformers.AutoModelForTokenClassification.from_pretrained(
+glue/batch-processor/src/pci_redaction/model.py:158:                MODEL_DETECTOR = transformers.pipeline(
+
