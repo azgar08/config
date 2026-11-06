@@ -1,131 +1,38 @@
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-}
+resource "aws_glue_job" "this" {
+  name              = var.glue_job_name
+  role_arn          = var.glue_job_role_arn
+  glue_version      = var.glue_version
+  execution_class   = var.glue_job_execution_class
 
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
-}
-
-variable "project_name" {
-  description = "Project name"
-  type        = string
-}
-
-variable "account_name" {
-  description = "AWS account name"
-  type        = string
-}
-
-variable "glue_job_name" {
-  description = "Glue ETL job name"
-  type        = string
-}
-
-variable "glue_job_role_arn" {
-  description = "Existing Glue IAM role ARN"
-  type        = string
-}
-
-variable "s3_glue_bucket" {
-  description = "Existing S3 bucket for Glue scripts and temporary files"
-  type        = string
-}
-
-variable "glue_script_key" {
-  description = "S3 object key for Glue Python script"
-  type        = string
-}
-
-variable "glue_version" {
-  description = "AWS Glue version"
-  type        = string
-  default     = "5.0"
-}
-
-variable "python_version" {
-  description = "Python version"
-  type        = string
-  default     = "3"
-}
-
-variable "worker_type" {
-  description = "Glue worker type"
-  type        = string
-  default     = "G.1X"
-}
-
-variable "number_of_workers" {
-  description = "Number of Glue workers"
-  type        = number
-  default     = 2
-}
-
-variable "timeout" {
-  description = "Glue job timeout in minutes"
-  type        = number
-  default     = 60
-}
-
-variable "max_retries" {
-  description = "Maximum job retries"
-  type        = number
-  default     = 0
-}
-
-variable "glue_job_max_concur" {
-  description = "Maximum concurrent Glue job runs"
-  type        = number
-  default     = 100
-}
-
-variable "glue_job_execution_class" {
-  description = "Glue execution class"
-  type        = string
-  default     = "STANDARD"
-}
-
-variable "glue_security_cfg" {
-  description = "Existing Glue security configuration"
-  type        = string
-  default     = ""
-}
-
-variable "glue_job_connection" {
-  description = "Glue connection names"
-  type        = list(string)
-  default     = []
-}
-
-variable "glue_extra_libs" {
-  description = "Additional Python libraries in S3"
-  type        = list(string)
-  default     = []
-}
-
-variable "glue_driver_env_vars" {
-  description = "Glue driver environment variables"
-  type        = map(string)
-  default     = {}
-
-  validation {
-    condition = alltrue([
-      for key in keys(var.glue_driver_env_vars) :
-      startswith(key, "CUSTOMER_")
-    ])
-    error_message = "All driver environment variable keys must start with CUSTOMER_."
+  execution_property {
+    max_concurrent_runs = var.glue_job_max_concur
   }
-}
 
-variable "default_arguments" {
-  description = "Additional Glue default arguments"
-  type        = map(string)
-  default     = {}
-}
+  command {
+    name            = "glueetl"
+    script_location = local.glue_script_location
+    python_version  = var.python_version
+  }
 
-variable "tags" {
-  description = "Common resource tags"
-  type        = map(string)
-  default     = {}
+  worker_type       = var.worker_type
+  number_of_workers = var.number_of_workers
+
+  timeout     = var.timeout
+  max_retries = var.max_retries
+
+  default_arguments = local.default_glue_arguments
+
+  security_configuration = (
+    var.glue_security_cfg != "" ? var.glue_security_cfg : null
+  )
+
+  dynamic "connections" {
+    for_each = length(var.glue_job_connection) > 0 ? [1] : []
+
+    content {
+      connections = var.glue_job_connection
+    }
+  }
+
+  tags = local.common_tags
 }
