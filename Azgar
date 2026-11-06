@@ -1,9 +1,14 @@
+
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+
 apt-get update
-apt-get install -y zip
+apt-get install -y zip unzip
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+echo "Preparing Batch Processor package..."
 
 export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
 
@@ -15,6 +20,21 @@ export packaged_file="<+pipeline.variables.moduleName>-${package_version}.zip"
 
 trap 'rm -rf "$PACKAGE_DIR"' EXIT
 
+if [ ! -f "$MODULE_DIR/src/glue_redaction.py" ]; then
+  echo "ERROR: glue_redaction.py not found!"
+  exit 1
+fi
+
+if [ ! -d "$MODULE_DIR/src/pci_redaction" ]; then
+  echo "ERROR: pci_redaction directory not found!"
+  exit 1
+fi
+
+if [ ! -f "$MODULE_DIR/requirements.txt" ]; then
+  echo "ERROR: requirements.txt not found!"
+  exit 1
+fi
+
 echo "Installing runtime dependencies..."
 
 python -m pip install \
@@ -25,17 +45,22 @@ python -m pip install \
 echo "Copying Glue application source..."
 
 cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
-
 cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
+cp "$MODULE_DIR/requirements.txt" "$PACKAGE_DIR/"
 
 echo "Creating deployment ZIP..."
 
 (cd "$PACKAGE_DIR" && zip -r "$PACKAGE_ROOT/$packaged_file" . \
-  -x "*/__pycache__/*" "*.pyc")
+  -x "*/__pycache__/*" "*.pyc" "*.pyo")
 
 echo "Validating deployment ZIP..."
 
 unzip -t "$packaged_file"
+
+if [ ! -s "$packaged_file" ]; then
+  echo "ERROR: Package ZIP is missing or empty!"
+  exit 1
+fi
 
 echo "Package: $packaged_file"
 echo "Version: $package_version"
