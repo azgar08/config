@@ -1,612 +1,95 @@
 
-pipeline:
-  name: Deploy Redaction Batch Ingestion Glue
-  identifier: Deploy_Redaction_Batch_Ingestion_Glue
-  projectIdentifier: RaaS
-  orgIdentifier: Payments
-  tags: {}
-
-  stages:
-    - parallel:
-        # ==========================================
-        # LOWER ENVIRONMENTS - DEV / NONPROD
-        # ==========================================
-        - stage:
-            name: Deploy Redaction Batch Ingestion Glue-Lower
-            identifier: Deploy_Redaction_Batch_Ingestion_Glue_Lower
-            type: Custom
-            spec:
-              execution:
-                steps:
-                  # ------------------------------
-                  # PLAN
-                  # ------------------------------
-                  - step:
-                      type: ShellScript
-                      name: Redaction Glue Terragrunt Plan
-                      identifier: Redaction_Glue_Terragrunt_Plan
-                      spec:
-                        shell: Bash
-                        executionTarget: {}
-                        source:
-                          type: Inline
-                          spec:
-                            script: |-
-                              set -euo pipefail
-
-                              export TENV_AUTO_INSTALL=true
-                              export TERRAGRUNT_TFPATH=tofu
-
-                              tofu -v
-
-                              case "<+pipeline.variables.env_delegate>" in
-                                dev-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
-                                  ;;
-                                nonprod-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
-                                  ;;
-                                prod-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
-                                  ;;
-                                *)
-                                  echo "Invalid delegate"
-                                  exit 1
-                                  ;;
-                              esac
-
-                              CREDS=$(aws sts assume-role \
-                                --role-arn "$ROLE_ARN" \
-                                --role-session-name RedactionGluePlan)
-
-                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
-                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
-                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-
-                              aws sts get-caller-identity
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
-
-                              mkdir -p /tmp/src/glue /tmp/unzipped_archive
-
-                              cd /tmp/unzipped_archive
-
-                              if [ "<+pipeline.variables.package_version>" = "NA" ]; then
-                                src_file="<+pipeline.variables.trigger_package>"
-                              else
-                                src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
-                              fi
-
-                              file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
-
-                              echo "Downloading $file_url"
-                              wget "$file_url"
-
-                              unzip -o "$src_file" -d /tmp/src/glue
-
-                              test -f /tmp/src/glue/glue_redaction.py
-                              test -d /tmp/src/glue/pci_redaction
-
-                              cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
-
-                              cd /tmp/infrastructure.raas.terraform.live
-                              git checkout "<+pipeline.variables.branch_name>"
-
-                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
-
-                              sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
-
-                              echo "Running Redaction Glue Terragrunt Plan"
-                              terragrunt plan
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
-
-                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
-                        environmentVariables: []
-                        outputVariables: []
-                      timeout: 45m
-
-                  # ------------------------------
-                  # APPLY APPROVAL
-                  # ------------------------------
-                  - step:
-                      type: HarnessApproval
-                      name: Redaction Glue Apply Approval
-                      identifier: Redaction_Glue_Apply_Approval
-                      spec:
-                        approvalMessage: Please review the Redaction Batch Ingestion Glue deployment plan and approve.
-                        includePipelineExecutionHistory: true
-                        isAutoRejectEnabled: false
-                        approvers:
-                          userGroups:
-                            - account.Harness_RaaS_DevOps
-                            - account.Harness_RaaS_Dev
-                            - account.Harness_RaaS_QA
-                          minimumCount: 1
-                          disallowPipelineExecutor: false
-                        approverInputs: []
-                      timeout: 1h
-                      when:
-                        stageStatus: Success
-                        condition: <+pipeline.variables.deploy_action> == "apply" && <+pipeline.triggerType> == "MANUAL"
-
-                  # ------------------------------
-                  # DESTROY APPROVAL
-                  # ------------------------------
-                  - step:
-                      type: HarnessApproval
-                      name: Redaction Glue Destroy Approval
-                      identifier: Redaction_Glue_Destroy_Approval
-                      spec:
-                        approvalMessage: Please review and approve the Redaction Batch Ingestion Glue destroy operation.
-                        includePipelineExecutionHistory: true
-                        isAutoRejectEnabled: false
-                        approvers:
-                          userGroups:
-                            - account.Harness_RaaS_DevOps
-                          minimumCount: 1
-                          disallowPipelineExecutor: false
-                        approverInputs: []
-                      timeout: 1h
-                      when:
-                        stageStatus: Success
-                        condition: <+pipeline.variables.deploy_action> == "destroy"
-
-                  # ------------------------------
-                  # APPLY
-                  # ------------------------------
-                  - step:
-                      type: ShellScript
-                      name: Redaction Glue Terragrunt Apply
-                      identifier: Redaction_Glue_Terragrunt_Apply
-                      spec:
-                        shell: Bash
-                        executionTarget: {}
-                        source:
-                          type: Inline
-                          spec:
-                            script: |-
-                              set -euo pipefail
-
-                              export TENV_AUTO_INSTALL=true
-                              export TERRAGRUNT_TFPATH=tofu
-
-                              case "<+pipeline.variables.env_delegate>" in
-                                dev-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
-                                  ;;
-                                nonprod-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
-                                  ;;
-                                prod-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
-                                  ;;
-                                *)
-                                  echo "Invalid delegate"
-                                  exit 1
-                                  ;;
-                              esac
-
-                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGlueApply)
-
-                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
-                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
-                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-
-                              aws sts get-caller-identity
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
-                              mkdir -p /tmp/src/glue /tmp/unzipped_archive
-
-                              cd /tmp/unzipped_archive
-
-                              if [ "<+pipeline.variables.package_version>" = "NA" ]; then
-                                src_file="<+pipeline.variables.trigger_package>"
-                              else
-                                src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
-                              fi
-
-                              file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
-
-                              wget "$file_url"
-                              unzip -o "$src_file" -d /tmp/src/glue
-
-                              test -f /tmp/src/glue/glue_redaction.py
-                              test -d /tmp/src/glue/pci_redaction
-
-                              cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
-
-                              cd /tmp/infrastructure.raas.terraform.live
-                              git checkout "<+pipeline.variables.branch_name>"
-
-                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
-
-                              sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
-
-                              terragrunt apply --auto-approve
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
-                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
-                        environmentVariables: []
-                        outputVariables: []
-                      timeout: 45m
-                      when:
-                        stageStatus: Success
-                        condition: <+pipeline.variables.deploy_action> == "apply"
-
-                  # ------------------------------
-                  # DESTROY
-                  # ------------------------------
-                  - step:
-                      type: ShellScript
-                      name: Redaction Glue Terragrunt Destroy
-                      identifier: Redaction_Glue_Terragrunt_Destroy
-                      spec:
-                        shell: Bash
-                        executionTarget: {}
-                        source:
-                          type: Inline
-                          spec:
-                            script: |-
-                              set -euo pipefail
-
-                              export TENV_AUTO_INSTALL=true
-                              export TERRAGRUNT_TFPATH=tofu
-
-                              case "<+pipeline.variables.env_delegate>" in
-                                dev-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
-                                  ;;
-                                nonprod-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
-                                  ;;
-                                prod-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
-                                  ;;
-                                *)
-                                  echo "Invalid delegate"
-                                  exit 1
-                                  ;;
-                              esac
-
-                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGlueDestroy)
-
-                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
-                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
-                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-
-                              aws sts get-caller-identity
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-
-                              cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
-
-                              cd /tmp/infrastructure.raas.terraform.live
-                              git checkout "<+pipeline.variables.branch_name>"
-
-                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
-
-                              terragrunt destroy --auto-approve
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
-                        environmentVariables: []
-                        outputVariables: []
-                      timeout: 45m
-                      when:
-                        stageStatus: Success
-                        condition: <+pipeline.variables.deploy_action> == "destroy"
-            tags: {}
-            when:
-              pipelineStatus: Success
-              condition: <+pipeline.variables.aws_lz> == "DEV" || <+pipeline.variables.aws_lz> == "NONPROD"
-
-        # ==========================================
-        # HIGHER ENVIRONMENT - PROD
-        # ==========================================
-        - stage:
-            name: Deploy Redaction Batch Ingestion Glue-Higher
-            identifier: Deploy_Redaction_Batch_Ingestion_Glue_Higher
-            type: Custom
-            spec:
-              execution:
-                steps:
-                  - step:
-                      type: ShellScript
-                      name: Redaction Glue Terragrunt Plan
-                      identifier: Redaction_Glue_Terragrunt_Plan_Higher
-                      spec:
-                        shell: Bash
-                        executionTarget: {}
-                        source:
-                          type: Inline
-                          spec:
-                            script: |-
-                              set -euo pipefail
-
-                              export TENV_AUTO_INSTALL=true
-                              export TERRAGRUNT_TFPATH=tofu
-
-                              case "<+pipeline.variables.env_delegate>" in
-                                dev-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
-                                  ;;
-                                nonprod-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
-                                  ;;
-                                prod-iac-delegate)
-                                  ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
-                                  ;;
-                                *)
-                                  echo "Invalid delegate"
-                                  exit 1
-                                  ;;
-                              esac
-
-                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGluePlan)
-
-                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
-                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
-                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-
-                              aws sts get-caller-identity
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
-                              mkdir -p /tmp/src/glue /tmp/unzipped_archive
-
-                              cd /tmp/unzipped_archive
-
-                              if [ "<+pipeline.variables.package_version>" = "NA" ]; then
-                                src_file="<+pipeline.variables.trigger_package>"
-                              else
-                                src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
-                              fi
-
-                              file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
-
-                              wget "$file_url"
-                              unzip -o "$src_file" -d /tmp/src/glue
-
-                              test -f /tmp/src/glue/glue_redaction.py
-                              test -d /tmp/src/glue/pci_redaction
-
-                              cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
-
-                              cd /tmp/infrastructure.raas.terraform.live
-                              git checkout "<+pipeline.variables.branch_name>"
-
-                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
-
-                              sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
-
-                              terragrunt plan
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
-                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
-                        environmentVariables: []
-                        outputVariables: []
-                      timeout: 45m
-
-                  - step:
-                      type: HarnessApproval
-                      name: Redaction Glue Apply Approval
-                      identifier: Redaction_Glue_Apply_Approval_Higher
-                      spec:
-                        approvalMessage: Review and approve the Redaction Batch Ingestion Glue PROD deployment.
-                        includePipelineExecutionHistory: true
-                        isAutoRejectEnabled: false
-                        approvers:
-                          userGroups:
-                            - R360_Plus_SRE
-                          minimumCount: 1
-                          disallowPipelineExecutor: false
-                        approverInputs: []
-                      timeout: 1d
-                      when:
-                        stageStatus: Success
-                        condition: <+pipeline.variables.deploy_action> == "apply"
-
-                  - step:
-                      type: HarnessApproval
-                      name: Redaction Glue Destroy Approval
-                      identifier: Redaction_Glue_Destroy_Approval_Higher
-                      spec:
-                        approvalMessage: Review and approve the Redaction Batch Ingestion Glue PROD destroy operation.
-                        includePipelineExecutionHistory: true
-                        isAutoRejectEnabled: false
-                        approvers:
-                          userGroups:
-                            - R360_Plus_SRE
-                          minimumCount: 1
-                          disallowPipelineExecutor: false
-                        approverInputs: []
-                      timeout: 1d
-                      when:
-                        stageStatus: Success
-                        condition: <+pipeline.variables.deploy_action> == "destroy"
-
-                  - step:
-                      type: ShellScript
-                      name: Redaction Glue Terragrunt Apply
-                      identifier: Redaction_Glue_Terragrunt_Apply_Higher
-                      spec:
-                        shell: Bash
-                        executionTarget: {}
-                        source:
-                          type: Inline
-                          spec:
-                            script: |-
-                              set -euo pipefail
-
-                              export TENV_AUTO_INSTALL=true
-                              export TERRAGRUNT_TFPATH=tofu
-
-                              ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
-
-                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGlueApply)
-
-                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
-                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
-                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-
-                              aws sts get-caller-identity
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
-                              mkdir -p /tmp/src/glue /tmp/unzipped_archive
-
-                              cd /tmp/unzipped_archive
-
-                              if [ "<+pipeline.variables.package_version>" = "NA" ]; then
-                                src_file="<+pipeline.variables.trigger_package>"
-                              else
-                                src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
-                              fi
-
-                              file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
-
-                              wget "$file_url"
-                              unzip -o "$src_file" -d /tmp/src/glue
-
-                              test -f /tmp/src/glue/glue_redaction.py
-                              test -d /tmp/src/glue/pci_redaction
-
-                              cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
-
-                              cd /tmp/infrastructure.raas.terraform.live
-                              git checkout "<+pipeline.variables.branch_name>"
-
-                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
-
-                              sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
-
-                              terragrunt apply --auto-approve
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
-                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
-                        environmentVariables: []
-                        outputVariables: []
-                      timeout: 45m
-                      when:
-                        stageStatus: Success
-                        condition: <+pipeline.variables.deploy_action> == "apply"
-
-                  - step:
-                      type: ShellScript
-                      name: Redaction Glue Terragrunt Destroy
-                      identifier: Redaction_Glue_Terragrunt_Destroy_Higher
-                      spec:
-                        shell: Bash
-                        executionTarget: {}
-                        source:
-                          type: Inline
-                          spec:
-                            script: |-
-                              set -euo pipefail
-
-                              export TENV_AUTO_INSTALL=true
-                              export TERRAGRUNT_TFPATH=tofu
-
-                              ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
-
-                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGlueDestroy)
-
-                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
-                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
-                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-
-                              aws sts get-caller-identity
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-
-                              cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
-
-                              cd /tmp/infrastructure.raas.terraform.live
-                              git checkout "<+pipeline.variables.branch_name>"
-
-                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
-
-                              terragrunt destroy --auto-approve
-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
-                        environmentVariables: []
-                        outputVariables: []
-                      timeout: 45m
-                      when:
-                        stageStatus: Success
-                        condition: <+pipeline.variables.deploy_action> == "destroy"
-            tags: {}
-            when:
-              pipelineStatus: Success
-              condition: <+pipeline.variables.aws_lz> == "PROD"
-
-  variables:
-    - name: branch_name
-      type: String
-      description: IaC repository branch
-      required: false
-      value: <+input>.default(dev-east-1)
-
-    - name: aws_lz
-      type: String
-      description: AWS landing zone
-      value: <+input>.default(DEV).selectOneFrom(DEV,NONPROD,PROD)
-
-    - name: aws_region
-      type: String
-      description: AWS region
-      value: <+input>.default(us-east-1).selectOneFrom(us-east-1,us-west-2)
-
-    - name: environment
-      type: String
-      description: Deployment environment
-      value: <+input>.default(DEV).selectOneFrom(DEV,QA,RC,XUAT,PROD,DR)
-
-    - name: artifactory_url
-      type: String
-      description: Artifactory base URL
-      value: https://artifacts.deluxe.com
-
-    - name: artifactory_repo
-      type: String
-      description: Artifactory repository
-      value: deluxe-raas-dl-local
-
-    - name: package_version
-      type: String
-      description: CI package version; use NA for trigger package
-      value: <+input>
-
-    - name: module_name
-      type: String
-      description: CI artifact module name
-      value: batch-processor
-
-    - name: framework_name
-      type: String
-      description: CI framework folder in Artifactory
-      value: RaaS-Redaction-Glue
-
-    - name: deploy_action
-      type: String
-      description: Deployment action
-      value: <+input>.default(apply).selectOneFrom(apply,destroy)
-
-    - name: trigger_package
-      type: String
-      description: Exact artifact filename when package_version is NA
-      value: <+input>.default(NA)
-
-    - name: env_delegate
-      type: String
-      description: AWS delegate selector
-      value: <+input>.default(dev-iac-delegate).selectOneFrom(dev-iac-delegate,nonprod-iac-delegate,prod-iac-delegate)
-
-  delegateSelectors:
-    - <+pipeline.variables.env_delegate>
+locals {
+  account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
+  region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+
+  aws_region   = local.region_vars.locals.aws_region
+  environment  = local.environment_vars.locals.environment
+  project_name = local.environment_vars.locals.project_suffix
+  account_name = local.account_vars.locals.account_name
+
+  source = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue-etl"
+}
+
+dependency "common-tags" {
+  config_path = find_in_parent_folders("common-tags")
+}
+
+dependency "iam-batch-processor-glue" {
+  config_path = find_in_parent_folders("pci-redaction/iam/iam-batch-processor-glue")
+}
+
+dependency "s3-pci-ingestion" {
+  config_path = find_in_parent_folders("pci-redaction/s3/s3-pci-ingestion")
+}
+
+dependency "redaction-batch-metadata" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-batch-metadata")
+}
+
+dependency "redaction-image-metadata" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-image-metadata")
+}
+
+dependency "redaction-textractratecontrol" {
+  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-textractratecontrol")
+}
+
+inputs = {
+  aws_region   = local.aws_region
+  environment  = local.environment
+  project_name = local.project_name
+  account_name = local.account_name
+
+  # Glue job configuration
+  glue_job_name            = "dlx-r360plus-batch-processor-glue-${environment}"
+  glue_job_role_arn        = dependency.iam-batch-processor-glue.outputs.iam_role_arn
+  glue_version             = "5.0"
+  python_version           = "3"
+  glue_job_execution_class = "STANDARD"
+
+  worker_type       = "G.1X"
+  number_of_workers = 2
+
+  glue_job_max_concur = 100
+  timeout             = 60
+  max_retries         = 0
+
+  # Existing S3 bucket
+  s3_glue_bucket = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+
+  # Glue Python entry script
+  glue_script_key = "scripts/glue_redaction.py"
+
+  # Python package uploaded to the same S3 bucket
+  glue_extra_libs = [
+    "s3://${dependency.s3-pci-ingestion.outputs.s3_bucket_id}/libs/pci_redaction.zip"
+  ]
+
+  glue_security_cfg   = ""
+  glue_job_connection = []
+
+  # Both buckets use the existing S3 bucket.
+  default_arguments = {
+    "--REGION"                       = local.aws_region
+    "--RAW_BUCKET"                   = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+    "--GOLDEN_BUCKET"                = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+
+    "--IMAGE_TRACKING_TABLE"         = dependency.redaction-image-metadata.outputs.dynamodb_table_name
+    "--BATCH_METADATA_TABLE"         = dependency.redaction-batch-metadata.outputs.dynamodb_table_name
+    "--TEXTRACT_RATE_CONTROL_TABLE"  = dependency.redaction-textractratecontrol.outputs.dynamodb_table_name
+
+    "--TEXTRACT_QUOTA_TPS"           = "100"
+  }
+
+  # Not using environment variables for this implementation.
+  glue_driver_env_vars = {}
+
+  tags = merge(
+    dependency.common-tags.outputs.common_tags,
+    {
+      "TerraformPath" = path_relative_to_include()
+    }
+  )
+}
