@@ -1,3 +1,9 @@
+Executing the following command(s):
+set -e
+set +x
+if [ -x "$(command -v git)" ]; then
+  git config --global --add safe.directory '*' || true 
+fi
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -7,3 +13,368 @@ apt-get install -y zip unzip
 apt-get clean
 
 python -m pip install --no-cache-dir pytest
+cd glue/batch-processor
+export PYTHONPATH="$PWD/src"
+
+if grep -R -nE '\.(delete_item|describe_time_to_live|update_time_to_live)[[:space:]]*\(' src/pci_redaction; then
+  echo "Batch processor must not delete DynamoDB records or administer DynamoDB TTL."
+  exit 1
+fi
+
+set +e
+pytest tests/unit --junitxml=junitresults.xml
+unit_test_exitcd=$?
+set -e
+
+VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
+cp "junitresults.xml" $VortexFilename
+
+codebase_branch="RAA"
+if [ "$codebase_branch" = "dev" ] || [ "$codebase_branch" = "rel" ]
+then
+  echo "--------------------"
+  echo "Sending Test Results to TAAS"
+  echo "--------------------"
+
+  curl -F "exectype=Pre-Deploy" \
+       -F "environment=QA" \
+       -F "file=@$VortexFilename" \
+       -k \
+       "https://internal-k8s-raastaas-taasserv-298e9a08a3-1950398463.us-east-1.elb.amazonaws.com/ingestspecflow"
+
+  echo "--------------------"
+fi
+
+ArchiveName="RaaS_BatchProcessor_PreDeploy.zip"
+echo "Adding 'junitresults.xml' to archive: $ArchiveName"
+zip $ArchiveName "junitresults.xml"
+
+echo "Uploading archive to Report Portal (https://reportportal.deluxe.com/api/v1/RAAS/launch/import)"
+AccessToken="**************"
+# curl -F "file=@$ArchiveName" -H "Authorization: ************** "https://reportportal.deluxe.com/api/v1/RAAS/launch/import"
+
+curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-current.tar.gz" -H "Authorization: ************** -xzf ./ZephyrUpload-current.tar.gz
+cd ./ZephyrUpload-current
+pip3 install -r ./ZephyrUpload/requirements.txt
+python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction-Glue" -type All -features "../" -junit "../$VortexFilename" -auth "**************" -userid "1" -noname
+cd ..
+
+if [ $unit_test_exitcd -ne 0 ]
+then
+  exit $unit_test_exitcd
+fi
+Hit:1 http://deb.debian.org/debian trixie InRelease
+
+Get:2 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
+
+Get:3 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
+
+Get:4 http://deb.debian.org/debian trixie/main amd64 Packages [9678 kB]
+
+Get:5 http://deb.debian.org/debian trixie-updates/main amd64 Packages [1108 B]
+
+Get:6 http://deb.debian.org/debian-security trixie-security/main amd64 Packages [298 kB]
+
+Fetched 10.1 MB in 1s (11.8 MB/s)
+
+Reading package lists...
+
+Reading package lists...
+
+Building dependency tree...
+
+Reading state information...
+
+unzip is already the newest version (6.0-29+deb13u1).
+
+The following NEW packages will be installed:
+
+  zip
+
+0 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.
+
+Need to get 235 kB of archives.
+
+After this operation, 642 kB of additional disk space will be used.
+
+Get:1 http://deb.debian.org/debian trixie/main amd64 zip amd64 3.0-15+deb13u1 [235 kB]
+
+Fetched 235 kB in 0s (8774 kB/s)
+
+Selecting previously unselected package zip.
+
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 26756 files and directories currently installed.)
+
+Preparing to unpack .../zip_3.0-15+deb13u1_amd64.deb ...
+
+Unpacking zip (3.0-15+deb13u1) ...
+
+Setting up zip (3.0-15+deb13u1) ...
+
+Collecting pytest
+
+  Downloading pytest-9.2.0-py3-none-any.whl.metadata (7.9 kB)
+
+Collecting iniconfig>=2 (from pytest)
+
+  Downloading iniconfig-2.3.1-py3-none-any.whl.metadata (2.8 kB)
+
+Collecting packaging>=24 (from pytest)
+
+  Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+
+Collecting pluggy&lt;2,>=1.6 (from pytest)
+
+  Downloading pluggy-1.7.0-py3-none-any.whl.metadata (5.0 kB)
+
+Collecting pygments>=2.15 (from pytest)
+
+  Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+
+Downloading pytest-9.2.0-py3-none-any.whl (411 kB)
+
+Downloading iniconfig-2.3.1-py3-none-any.whl (7.6 kB)
+
+Downloading packaging-26.3-py3-none-any.whl (129 kB)
+
+Downloading pluggy-1.7.0-py3-none-any.whl (27 kB)
+
+Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 217.4 MB/s eta 0:00:00
+
+Installing collected packages: pygments, pluggy, packaging, iniconfig, pytest
+
+Successfully installed iniconfig-2.3.1 packaging-26.3 pluggy-1.7.0 pygments-2.21.0 pytest-9.2.0
+
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+
+
+
+[notice] A new release of pip is available: 25.0.1 -> 26.3
+
+[notice] To update, run: pip install --upgrade pip
+
+============================= test session starts ==============================
+
+platform linux -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0
+
+rootdir: /harness/glue/batch-processor
+
+collected 1 item / 1 error
+
+
+
+==================================== ERRORS ====================================
+
+____________ ERROR collecting tests/unit/test_batch_rate_control.py ____________
+
+ImportError while importing test module '/harness/glue/batch-processor/tests/unit/test_batch_rate_control.py'.
+
+Hint: make sure your test modules/packages have valid Python names.
+
+Traceback:
+
+/usr/local/lib/python3.12/importlib/__init__.py:90: in import_module
+
+    return _bootstrap._gcd_import(name[level:], package, level)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_batch_rate_control.py:9: in &lt;module>
+
+    from pci_redaction import batch
+
+src/pci_redaction/batch.py:14: in &lt;module>
+
+    import boto3
+
+E   ModuleNotFoundError: No module named 'boto3'
+
+------ generated xml file: /harness/glue/batch-processor/junitresults.xml ------
+
+=========================== short test summary info ============================
+
+ERROR tests/unit/test_batch_rate_control.py
+
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+
+=============================== 1 error in 0.19s ===============================
+
+Adding 'junitresults.xml' to archive: RaaS_BatchProcessor_PreDeploy.zip
+
+  adding: junitresults.xml (deflated 48%)
+
+Uploading archive to Report Portal (https://reportportal.deluxe.com/api/v1/RAAS/launch/import)
+
+Collecting GitPython==3.1.31 (from -r ./ZephyrUpload/requirements.txt (line 1))
+
+  Downloading GitPython-3.1.31-py3-none-any.whl.metadata (1.3 kB)
+
+Collecting junitparser==3.1.0 (from -r ./ZephyrUpload/requirements.txt (line 2))
+
+  Downloading junitparser-3.1.0-py2.py3-none-any.whl.metadata (9.0 kB)
+
+Collecting Requests==2.31.0 (from -r ./ZephyrUpload/requirements.txt (line 3))
+
+  Downloading requests-2.31.0-py3-none-any.whl.metadata (4.6 kB)
+
+Collecting gherkin_official==24.1.0 (from -r ./ZephyrUpload/requirements.txt (line 4))
+
+  Downloading gherkin-official-24.1.0.tar.gz (27 kB)
+
+  Installing build dependencies: started
+
+  Installing build dependencies: finished with status 'done'
+
+  Getting requirements to build wheel: started
+
+  Getting requirements to build wheel: finished with status 'done'
+
+  Preparing metadata (pyproject.toml): started
+
+  Preparing metadata (pyproject.toml): finished with status 'done'
+
+Collecting jsonpath-ng==1.5.3 (from -r ./ZephyrUpload/requirements.txt (line 5))
+
+  Downloading jsonpath_ng-1.5.3-py3-none-any.whl.metadata (16 kB)
+
+Collecting gitdb&lt;5,>=4.0.1 (from GitPython==3.1.31->-r ./ZephyrUpload/requirements.txt (line 1))
+
+  Downloading gitdb-4.0.12-py3-none-any.whl.metadata (1.2 kB)
+
+Collecting future (from junitparser==3.1.0->-r ./ZephyrUpload/requirements.txt (line 2))
+
+  Downloading future-1.0.0-py3-none-any.whl.metadata (4.0 kB)
+
+Collecting charset-normalizer&lt;4,>=2 (from Requests==2.31.0->-r ./ZephyrUpload/requirements.txt (line 3))
+
+  Downloading charset_normalizer-3.5.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (46 kB)
+
+Collecting idna&lt;4,>=2.5 (from Requests==2.31.0->-r ./ZephyrUpload/requirements.txt (line 3))
+
+  Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+
+Collecting urllib3&lt;3,>=1.21.1 (from Requests==2.31.0->-r ./ZephyrUpload/requirements.txt (line 3))
+
+  Downloading urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+
+Collecting certifi>=2017.4.17 (from Requests==2.31.0->-r ./ZephyrUpload/requirements.txt (line 3))
+
+  Downloading certifi-2026.10.23-py3-none-any.whl.metadata (2.5 kB)
+
+Collecting ply (from jsonpath-ng==1.5.3->-r ./ZephyrUpload/requirements.txt (line 5))
+
+  Downloading ply-3.11-py2.py3-none-any.whl.metadata (844 bytes)
+
+Collecting decorator (from jsonpath-ng==1.5.3->-r ./ZephyrUpload/requirements.txt (line 5))
+
+  Downloading decorator-5.3.1-py3-none-any.whl.metadata (3.9 kB)
+
+Collecting six (from jsonpath-ng==1.5.3->-r ./ZephyrUpload/requirements.txt (line 5))
+
+  Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+
+Collecting smmap&lt;6,>=3.0.1 (from gitdb&lt;5,>=4.0.1->GitPython==3.1.31->-r ./ZephyrUpload/requirements.txt (line 1))
+
+  Downloading smmap-5.0.3-py3-none-any.whl.metadata (4.6 kB)
+
+Downloading GitPython-3.1.31-py3-none-any.whl (184 kB)
+
+Downloading junitparser-3.1.0-py2.py3-none-any.whl (13 kB)
+
+Downloading requests-2.31.0-py3-none-any.whl (62 kB)
+
+Downloading jsonpath_ng-1.5.3-py3-none-any.whl (29 kB)
+
+Downloading certifi-2026.10.23-py3-none-any.whl (135 kB)
+
+Downloading charset_normalizer-3.5.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (257 kB)
+
+Downloading gitdb-4.0.12-py3-none-any.whl (62 kB)
+
+Downloading idna-3.20-py3-none-any.whl (69 kB)
+
+Downloading urllib3-2.8.0-py3-none-any.whl (135 kB)
+
+Downloading decorator-5.3.1-py3-none-any.whl (10 kB)
+
+Downloading future-1.0.0-py3-none-any.whl (491 kB)
+
+Downloading ply-3.11-py2.py3-none-any.whl (49 kB)
+
+Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+
+Downloading smmap-5.0.3-py3-none-any.whl (24 kB)
+
+Building wheels for collected packages: gherkin_official
+
+  Building wheel for gherkin_official (pyproject.toml): started
+
+  Building wheel for gherkin_official (pyproject.toml): finished with status 'done'
+
+  Created wheel for gherkin_official: filename=gherkin_official-24.1.0-py3-none-any.whl size=33423 sha256=3f203863c79f461bad5a6328a8f2d940a3d0546f176d25893da86aa82275e5bc
+
+  Stored in directory: /root/.cache/pip/wheels/d5/bb/71/34a3a30d340a2fdceb706ea8b6a4c7afbf25ef85c420abc86d
+
+Successfully built gherkin_official
+
+Installing collected packages: ply, gherkin_official, urllib3, smmap, six, idna, future, decorator, charset-normalizer, certifi, Requests, junitparser, jsonpath-ng, gitdb, GitPython
+
+Successfully installed GitPython-3.1.31 Requests-2.31.0 certifi-2026.10.23 charset-normalizer-3.5.2 decorator-5.3.1 future-1.0.0 gherkin_official-24.1.0 gitdb-4.0.12 idna-3.20 jsonpath-ng-1.5.3 junitparser-3.1.0 ply-3.11 six-1.17.0 smmap-5.0.3 urllib3-2.8.0
+
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+
+
+
+[notice] A new release of pip is available: 25.0.1 -> 26.3
+
+[notice] To update, run: pip install --upgrade pip
+
+Deluxe Zephyr 0.6.19
+
+Zephyr Path:  Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction-Glue
+
+INFO:root:Getting tests: https://deluxe.yourzephyr.com/flex/services/rest/v3/testcase/tree/78849?offset=0&amp;pagesize=0&amp;dbsearch=true&amp;isascorder=true&amp;order=orderId&amp;frozen=false&amp;is_cfield=false
+
+INFO:root:Parsing JUnit XML file: ../result.2026.11.06-06.33.40.xml
+
+INFO:root:Record Execution: 1  TestsunittestBatchRateControl
+
+RETRY-- TestsunittestBatchRateControl testsunittestbatchratecontrol
+
+Test Not Found:  RaaS-Redaction-Glue~~TestsunittestBatchRateControl
+
+Number of cases parsed in each file: map[glue/batch-processor/junitresults.xml:1 glue/batch-processor/result.2026.11.06-06.33.40.xml:1]
+parsed 2 test cases
+
+================= Harness Test Report =================
+✗ 2 test(s) failed.
++-----------+----------------------+---------+
+| Failed    | total                |      2  |
++-----------+----------------------+---------+
+| TOTAL     | all tests            |      2  |
++-----------+----------------------+---------+
+
+Successfully collected test reports in 209.541453ms time
