@@ -175,3 +175,323 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+
+
+
+
+
+
+
+
+
+locals {
+  glue_artifact_map = {
+    for artifact in var.glue_artifacts :
+    artifact.name => artifact
+  }
+
+  glue_script_artifact = try(
+    local.glue_artifact_map[var.glue_script_artifact_name],
+    null
+  )
+
+  glue_script_location = (
+    local.glue_script_artifact != null
+    ? "s3://${var.s3_glue_bucket}/${local.glue_script_artifact.s3_key}"
+    : ""
+  )
+
+  glue_library_locations = [
+    for name in var.glue_library_artifact_names :
+    try(
+      "s3://${var.s3_glue_bucket}/${local.glue_artifact_map[name].s3_key}",
+      ""
+    )
+  ]
+
+  glue_all_library_locations = concat(
+    local.glue_library_locations,
+    var.glue_extra_libs
+  )
+
+  glue_extra_py_files = (
+    length(local.glue_all_library_locations) > 0
+    ? {
+        "--extra-py-files" = join(
+          ",",
+          local.glue_all_library_locations
+        )
+      }
+    : {}
+  )
+
+  default_glue_arguments = merge(
+    var.default_arguments,
+    local.glue_extra_py_files
+  )
+}
+
+
+
+
+
+
+
+resource "aws_s3_object" "glue_artifacts" {
+  for_each = {
+    for artifact in var.glue_artifacts :
+    artifact.name => artifact
+  }
+
+  bucket = var.s3_glue_bucket
+  key    = each.value.s3_key
+
+  source      = each.value.source_path
+  source_hash = filemd5(each.value.source_path)
+
+  tags = var.tags
+}
+
+resource "aws_glue_job" "this" {
+  name     = var.glue_job_name
+  role_arn = var.glue_job_role_arn
+
+  glue_version    = var.glue_version
+  execution_class = var.glue_job_execution_class
+
+  worker_type       = var.worker_type
+  number_of_workers = var.number_of_workers
+
+  timeout     = var.timeout
+  max_retries = var.max_retries
+
+  execution_property {
+    max_concurrent_runs = var.glue_job_max_concur
+  }
+
+  command {
+    name            = "glueetl"
+    script_location = local.glue_script_location
+    python_version  = var.python_version
+  }
+
+  default_arguments = local.default_glue_arguments
+
+  security_configuration = (
+    var.glue_security_cfg != ""
+    ? var.glue_security_cfg
+    : null
+  )
+
+  connections = var.glue_job_connection
+
+  tags = var.tags
+
+  lifecycle {
+    precondition {
+      condition = (
+        local.glue_script_artifact != null &&
+        try(local.glue_script_artifact.type == "script", false)
+      )
+
+      error_message = "glue_script_artifact_name must identify an uploaded artifact with type = script."
+    }
+
+    precondition {
+      condition = alltrue([
+        for name in var.glue_library_artifact_names :
+        try(
+          local.glue_artifact_map[name].type == "library",
+          false
+        )
+      ])
+
+      error_message = "Every configured library name must identify an uploaded artifact with type = library."
+    }
+  }
+
+  depends_on = [
+    aws_s3_object.glue_artifacts
+  ]
+}
+
+
+
+
+
+
+
+
+
+
+
+output "glue_job_name" {
+  description = "AWS Glue job name"
+  value       = aws_glue_job.this.name
+}
+
+output "glue_job_arn" {
+  description = "AWS Glue job ARN"
+  value       = aws_glue_job.this.arn
+}
+
+output "glue_script_location" {
+  description = "S3 location of the Glue entry script"
+  value       = local.glue_script_location
+}
+
+output "glue_artifact_locations" {
+  description = "S3 locations of all uploaded Glue artifacts"
+
+  value = {
+    for name, artifact in aws_s3_object.glue_artifacts :
+    name => "s3://${artifact.bucket}/${artifact.key}"
+  }
+}
+
+output "glue_artifact_keys" {
+  description = "S3 keys of all uploaded Glue artifacts"
+
+  value = {
+    for name, artifact in aws_s3_object.glue_artifacts :
+    name => artifact.key
+  }
+}
+
+
+
+
+locals {
+  account_vars = read_terragrunt_config(
+    find_in_parent_folders("account.hcl")
+  )
+
+  region_vars = read_terragrunt_config(
+    find_in_parent_folders("region.hcl")
+  )
+
+  environment_vars = read_terragrunt_config(
+    find_in_parent_folders("env.hcl")
+  )
+
+  aws_region   = local.region_vars.locals.aws_region
+  environment  = lower(local.environment_vars.locals.environment)
+  project_name = local.environment_vars.locals.project_suffix
+  account_name = local.account_vars.locals.account_name
+
+  package_version = "<+<+codebase.branch>.replaceAll(\"/\",\"-\")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
+}
+
+terraform {
+  source = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue-etl"
+}
+
+dependency "common-tags" {
+  config_path = find_in_parent_folders("common-tags")
+}
+
+dependency "iam-batch-processor-glue" {
+  config_path = find_in_parent_folders(
+    "pci-redaction/iam/iam-batch-processor-glue"
+  )
+}
+
+dependency "s3-pci-ingestion" {
+  config_path = find_in_parent_folders(
+    "pci-redaction/s3/s3-pci-ingestion"
+  )
+}
+
+dependency "redaction-batch-metadata" {
+  config_path = find_in_parent_folders(
+    "pci-redaction/dynamodb/redaction-batch-metadata"
+  )
+}
+
+dependency "redaction-image-metadata" {
+  config_path = find_in_parent_folders(
+    "pci-redaction/dynamodb/redaction-image-metadata"
+  )
+}
+
+dependency "redaction-textractratecontrol" {
+  config_path = find_in_parent_folders(
+    "pci-redaction/dynamodb/redaction-textractratecontrol"
+  )
+}
+
+inputs = {
+  # Common configuration
+  aws_region   = local.aws_region
+  environment  = local.environment
+  project_name = local.project_name
+  account_name = local.account_name
+
+  # Glue job configuration
+  glue_job_name     = "dlx-r360plus-batch-processor-glue-${local.environment}"
+  glue_job_role_arn = dependency.iam-batch-processor-glue.outputs.iam_role_arn
+
+  glue_version             = "5.0"
+  python_version           = "3"
+  glue_job_execution_class = "STANDARD"
+
+  worker_type       = "G.1X"
+  number_of_workers = 2
+
+  glue_job_max_concur = 100
+  timeout             = 60
+  max_retries         = 0
+
+  # S3 bucket
+  s3_glue_bucket = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+
+  # Entry script artifact
+  glue_script_artifact_name = "redaction-entry"
+
+  # Python library artifacts
+  glue_library_artifact_names = [
+    "redaction-library"
+  ]
+
+  # Packaged artifacts prepared by Harness
+  glue_artifacts = [
+    {
+      name        = "redaction-entry"
+      type        = "script"
+      source_path = "/tmp/src/glue/glue_redaction.py"
+      s3_key      = "scripts/${local.environment}/${local.package_version}/glue_redaction.py"
+    },
+    {
+      name        = "redaction-library"
+      type        = "library"
+      source_path = "/tmp/src/glue/pci_redaction.zip"
+      s3_key      = "libs/${local.environment}/${local.package_version}/pci_redaction.zip"
+    }
+  ]
+
+  # Additional external libraries, if required
+  glue_extra_libs = []
+
+  # Glue configuration
+  glue_security_cfg   = ""
+  glue_job_connection = []
+
+  # Application-specific job arguments
+  default_arguments = {
+    "--REGION"                      = local.aws_region
+    "--RAW_BUCKET"                  = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+    "--GOLDEN_BUCKET"               = dependency.s3-pci-ingestion.outputs.s3_bucket_id
+    "--IMAGE_TRACKING_TABLE"        = dependency.redaction-image-metadata.outputs.dynamodb_table_name
+    "--BATCH_METADATA_TABLE"        = dependency.redaction-batch-metadata.outputs.dynamodb_table_name
+    "--TEXTRACT_RATE_CONTROL_TABLE" = dependency.redaction-textractratecontrol.outputs.dynamodb_table_name
+    "--TEXTRACT_QUOTA_TPS"          = "100"
+  }
+
+  tags = merge(
+    dependency.common-tags.outputs.common_tags,
+    {
+      TerraformPath = path_relative_to_include()
+    }
+  )
+}
