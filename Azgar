@@ -1,30 +1,34 @@
-$ terragrunt plan
 
-Initializing the backend...
+resource "aws_glue_job" "this" {
+  name     = var.glue_job_name
+  role_arn = var.glue_job_role_arn
 
-Initializing provider plugins...
-- Reusing previous version of hashicorp/aws from the dependency lock file
-- Using previously-installed hashicorp/aws v6.72.0
+  glue_version    = var.glue_version
+  execution_class = var.glue_job_execution_class
 
-Terraform has been successfully initialized!
+  worker_type       = var.worker_type
+  number_of_workers = var.number_of_workers
 
-You may now begin working with Terraform. Try running "terraform plan" to see
-any changes that are required for your infrastructure. All Terraform commands
-should now work.
+  timeout     = var.timeout
+  max_retries = var.max_retries
 
-If you ever set or change modules or backend configuration for Terraform,
-rerun this command to reinitialize your working directory. If you forget, other
-commands will detect it and remind you to do so if necessary.
-Acquiring state lock. This may take a few moments...
-Releasing state lock. This may take a few moments...
-╷
-│ Error: Unsupported block type
-│
-│   on glue.tf line 31, in resource "aws_glue_job" "this":
-│   31:   dynamic "connections" {
-│
-│ Blocks of type "connections" are not expected here.
-╵
-time=2026-11-06T23:00:51+05:30 level=error msg=terraform invocation failed in C:/Users/T469203/.terragrunt-cache/E8r8S2YL0chNd-Avfo6kXE1ZyIE/h6jLJL0e-hOk-kWB-Qf75JvOIaM prefix=[C:\Users\t469203\Desktop\PCI\infrastructure.raas.terraform.live\DEV\us-east-1\DEV\pci-redaction\glues\glue-batch-processor]
-time=2026-11-06T23:00:51+05:30 level=error msg=1 error occurred:
-        * [C:/Users/T469203/.terragrunt-cache/E8r8S2YL0chNd-Avfo6kXE1ZyIE/h6jLJL0e-hOk-kWB-Qf75JvOIaM] exit status 1
+  execution_property {
+    max_concurrent_runs = var.glue_job_max_concur
+  }
+
+  command {
+    name            = "glueetl"
+    script_location = local.glue_script_location
+    python_version  = var.python_version
+  }
+
+  default_arguments = local.default_glue_arguments
+
+  security_configuration = (
+    var.glue_security_cfg != "" ? var.glue_security_cfg : null
+  )
+
+  connections = var.glue_job_connection
+
+  tags = var.tags
+}
