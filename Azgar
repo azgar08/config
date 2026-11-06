@@ -1,41 +1,53 @@
-set -euo pipefail
+debconf: unable to initialize frontend: Readline
 
-apt-get update
-apt-get install -y zip
-apt-get clean
-rm -rf /var/lib/apt/lists/*
+debconf: (This frontend requires a controlling tty.)
 
-export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
+debconf: falling back to frontend: Teletype
 
-MODULE_DIR="glue/<+pipeline.variables.moduleName>"
-PACKAGE_ROOT="$PWD"
-PACKAGE_DIR="$(mktemp -d)"
+debconf: unable to initialize frontend: Teletype
 
-export packaged_file="<+pipeline.variables.moduleName>-${package_version}.zip"
+debconf: (This frontend requires a controlling tty.)
 
-trap 'rm -rf "$PACKAGE_DIR"' EXIT
+debconf: falling back to frontend: Noninteractive
 
-echo "Installing runtime dependencies..."
+Fetched 235 kB in 0s (9075 kB/s)
 
-python -m pip install \
-  --no-cache-dir \
-  --target "$PACKAGE_DIR" \
-  -r "$MODULE_DIR/requirements.txt"
+Selecting previously unselected package zip.
 
-echo "Copying Glue application source..."
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 26756 files and directories currently installed.)
 
-cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
+Preparing to unpack .../zip_3.0-15+deb13u1_amd64.deb ...
 
-cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
+Unpacking zip (3.0-15+deb13u1) ...
 
-echo "Creating deployment ZIP..."
+Setting up zip (3.0-15+deb13u1) ...
 
-(cd "$PACKAGE_DIR" && zip -r "$PACKAGE_ROOT/$packaged_file" . \
-  -x "*/__pycache__/*" "*.pyc")
+Collecting pytest
 
-echo "Validating deployment ZIP..."
+  Downloading pytest-9.2.0-py3-none-any.whl.metadata (7.9 kB)
 
-unzip -t "$packaged_file"
+Collecting iniconfig>=2 (from pytest)
 
-echo "Package: $packaged_file"
-echo "Version: $package_version"
+  Downloading iniconfig-2.3.1-py3-none-any.whl.metadata (2.8 kB)
+
