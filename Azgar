@@ -1,15 +1,296 @@
-# ML / NLP
-transformers==4.46.3
-torch==2.5.1
+pipeline:
+  name: Build Redaction Batch Processor Glue
+  identifier: Build_Redaction_Batch_Processor_Glue
+  projectIdentifier: RaaS
+  orgIdentifier: Payments
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: BitbucketCloud
+        repoName: raas-pciredactionbackend
+        build: <+input>
+  stages:
+    - stage:
+        name: Build
+        identifier: Build
+        type: CI
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: account.prodk8sdelegate4xlarge
+              namespace: harness-delegate-ng
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Pytest Unit Test
+                  identifier: pytest_unit_test
+                  spec:
+                    connectorRef: dockerhub
+                    image: python:3.12
+                    shell: Bash
+                    command: |-
+                      apt-get update && \
+                        apt-get install -y zip unzip && \
+                        apt-get clean;
 
-# Image processing
-opencv-python-headless==4.10.0.84
-Pillow==11.3.0
+                      python -m pip install --no-cache-dir pytest boto3
+                      cd glue/<+pipeline.variables.moduleName>
+                      export PYTHONPATH="$PWD/src"
 
-# Validation and utilities
-pydantic==2.11.7
-python-dateutil==2.9.0.post0
-tenacity==9.1.2
+                      if grep -R -nE '\.(delete_item|describe_time_to_live|update_time_to_live)[[:space:]]*\(' src/pci_redaction; then
+                        echo "Batch processor must not delete DynamoDB records or administer DynamoDB TTL."
+                        exit 1
+                      fi
 
-# AWS helpers
-aws-lambda-powertools==3.20.0
+                      echo "Running batch processor unit tests from tests/unit"
+                      set +e
+                      pytest tests/unit -ra --tb=short --junitxml=<+pipeline.variables.TestResultsFileName>
+                      unit_test_exitcd=$?
+                      set -e
+                      echo "Pytest exit code: $unit_test_exitcd"
+                      python -c 'import sys, xml.etree.ElementTree as ET; root=ET.parse(sys.argv[1]).getroot(); suites=[root] if root.tag == "testsuite" else root.findall(".//testsuite"); keys=("tests", "failures", "errors", "skipped"); print("Pytest JUnit summary: " + ", ".join(f"{key}={sum(int(s.get(key, 0)) for s in suites)}" for key in keys))' "<+pipeline.variables.TestResultsFileName>"
+
+                      VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
+                      cp "<+pipeline.variables.TestResultsFileName>" $VortexFilename
+
+                      codebase_branch="<+<+codebase.branch>.substring(0,3)>"
+                      if [ "$codebase_branch" = "dev" ] || [ "$codebase_branch" = "rel" ]
+                      then
+                        echo "--------------------"
+                        echo "Sending Test Results to TAAS"
+                        echo "--------------------"
+
+                        curl -F "exectype=Pre-Deploy" \
+                             -F "environment=QA" \
+                             -F "file=@$VortexFilename" \
+                             -k \
+                             "<+variable.TestAutomationAnalyticsSystemBaseUrl>/ingestspecflow"
+
+                        echo "--------------------"
+                      fi
+
+                      ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
+                      echo "Adding '<+pipeline.variables.TestResultsFileName>' to archive: $ArchiveName"
+                      zip $ArchiveName "<+pipeline.variables.TestResultsFileName>"
+
+                      echo "Uploading archive to Report Portal (<+variable.ReportPortalImportUrl>)"
+                      AccessToken="<+secrets.getValue("account.ReportPortalHarnessAccessToken")>"
+                      # curl -F "file=@$ArchiveName" -H "Authorization: Bearer $AccessToken" "<+variable.ReportPortalImportUrl>"
+
+                      curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz" -H "Authorization: <+secrets.getValue("account.JFrog_Cloud_API_Token")>"
+                      tar -xzf ./ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz
+                      cd ./ZephyrUpload-<+variable.ZephyrUploadVersion>
+                      pip3 install -r ./ZephyrUpload/requirements.txt
+                      echo "Submitting one JUnit report to Zephyr: ../$VortexFilename"
+                      set +e
+                      python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction-Glue" -type All -features "../tests/unit" -junit "../$VortexFilename" -auth "<+secrets.getValue("raas_zephyr_token")>" -userid "<+secrets.getValue("raas_zephyr_userid")>" -noname
+                      zephyr_exit_code=$?
+                      set -e
+                      echo "Zephyr uploader exit code: $zephyr_exit_code"
+                      cd ..
+
+                      if [ $unit_test_exitcd -ne 0 ]
+                      then
+                        exit $unit_test_exitcd
+                      fi
+                      if [ $zephyr_exit_code -ne 0 ]
+                      then
+                        echo "Zephyr upload failed. Check for Test Not Found messages and register/map the unit test cases in Zephyr."
+                        exit $zephyr_exit_code
+                      fi
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - glue/batch-processor/<+pipeline.variables.TestResultsFileName>
+                  when:
+                    stageStatus: Success
+              - parallel:
+                  - stepGroup:
+                      name: CxOne Scan RaaS
+                      identifier: CxOne_Scan_RaaS
+                      template:
+                        templateRef: CxOne_Scan_RaaS
+                        versionLabel: 1.1.0
+                        templateInputs:
+                          variables:
+                            - name: SkipScan
+                              type: String
+                              default: "Yes"
+                              value: "Yes"
+                            - name: MemoryLimit
+                              type: String
+                              default: 1G
+                              value: 1G
+                            - name: ProjectName
+                              type: String
+                              value: deluxe-development/RaaS/<+<+pipeline.properties.ci.codebase.repoName>.toLowerCase()>
+                            - name: EnforcePolicy
+                              type: String
+                              value: "Yes"
+                            - name: SkipScaScan
+                              type: String
+                              value: "Yes"
+                  - stepGroup:
+                      name: SonarQube Scan
+                      identifier: SonarQube_Scan
+                      steps:
+                        - step:
+                            type: Run
+                            name: SonarQube Run
+                            identifier: SonarQube_Run
+                            spec:
+                              connectorRef: dockerhub
+                              image: sonarsource/sonar-scanner-cli
+                              shell: Sh
+                              command: sonar-scanner -Dsonar.projectKey="RaaS-<+pipeline.properties.ci.codebase.repoName>" -Dsonar.host.url="https://sonarqube.deluxe.com" -Dsonar.login="<+secrets.getValue("account.sonarqube_access_token")>" -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info -Dsonar.branch.name=<+codebase.branch>
+                              resources:
+                                limits:
+                                  memory: 4096Mi
+                        - step:
+                            name: SonarQube Step
+                            identifier: SonarQube_Step
+                            template:
+                              templateRef: account.SonarQube_Step
+                              versionLabel: 1.0.0
+                              gitBranch: develop
+                              templateInputs:
+                                type: Sonarqube
+                                spec:
+                                  tool:
+                                    project_key: RaaS-<+pipeline.properties.ci.codebase.repoName>
+              - step:
+                  type: Run
+                  name: ArchiveSource
+                  identifier: ArchiveSource
+                  spec:
+                    connectorRef: artifactorydeluxecom
+                    image: python:3.12
+                    shell: Bash
+                    command: |-
+                      set -euo pipefail
+
+                      export DEBIAN_FRONTEND=noninteractive
+
+                      apt-get update
+                      apt-get install -y zip unzip
+                      apt-get clean
+                      rm -rf /var/lib/apt/lists/*
+
+                      echo "Preparing Batch Processor package..."
+
+                      export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
+
+                      MODULE_DIR="glue/<+pipeline.variables.moduleName>"
+                      PACKAGE_ROOT="$PWD"
+                      PACKAGE_DIR="$(mktemp -d)"
+
+                      export packaged_file="<+pipeline.variables.moduleName>-${package_version}.zip"
+
+                      trap 'rm -rf "$PACKAGE_DIR"' EXIT
+
+                      if [ ! -f "$MODULE_DIR/src/glue_redaction.py" ]; then
+                        echo "ERROR: glue_redaction.py not found!"
+                        exit 1
+                      fi
+
+                      if [ ! -d "$MODULE_DIR/src/pci_redaction" ]; then
+                        echo "ERROR: pci_redaction directory not found!"
+                        exit 1
+                      fi
+
+                      if [ ! -f "$MODULE_DIR/requirements.txt" ]; then
+                        echo "ERROR: requirements.txt not found!"
+                        exit 1
+                      fi
+
+                      echo "Installing runtime dependencies..."
+
+                      python -m pip install \
+                        --no-cache-dir \
+                        --target "$PACKAGE_DIR" \
+                        -r "$MODULE_DIR/requirements.txt"
+
+                      echo "Copying Glue application source..."
+
+                      cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
+                      cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
+                      cp "$MODULE_DIR/requirements.txt" "$PACKAGE_DIR/"
+
+                      echo "Creating deployment ZIP..."
+
+                      (cd "$PACKAGE_DIR" && zip -r "$PACKAGE_ROOT/$packaged_file" . \
+                        -x "*/__pycache__/*" "*.pyc" "*.pyo")
+
+                      echo "Validating deployment ZIP..."
+
+                      unzip -t "$packaged_file"
+
+                      if [ ! -s "$packaged_file" ]; then
+                        echo "ERROR: Package ZIP is missing or empty!"
+                        exit 1
+                      fi
+
+                      echo "Package: $packaged_file"
+                      echo "Version: $package_version"
+                    outputVariables:
+                      - name: packaged_file
+                      - name: package_version
+                  when:
+                    stageStatus: Success
+              - step:
+                  type: ArtifactoryUpload
+                  name: PushArtifactory
+                  identifier: PushArtifactory
+                  spec:
+                    connectorRef: account.artifactoryconnector
+                    target: <+pipeline.variables.artifactoryRepo>/<+pipeline.variables.frameworkName>/
+                    sourcePath: ./<+steps.ArchiveSource.output.outputVariables.packaged_file>
+                  when:
+                    stageStatus: Success
+                  failureStrategies: []
+          serviceDependencies:
+            - identifier: dind
+              name: dind
+              type: Service
+              spec:
+                connectorRef: artifactorydeluxecom
+                image: docker:dind
+                privileged: true
+          sharedPaths:
+            - /var/run
+            - /shared/scan_results
+  variables:
+    - name: bb_repoName
+      type: String
+      description: ""
+      value: raas-pciredactionbackend
+    - name: packageVersion
+      type: String
+      description: ""
+      value: "0.2"
+    - name: moduleName
+      type: String
+      description: ""
+      value: batch-processor
+    - name: frameworkName
+      type: String
+      description: ""
+      value: RaaS-Redaction-Glue
+    - name: artifactoryRepo
+      type: String
+      description: ""
+      value: deluxe-raas-dl-local
+    - name: ProjectName
+      type: String
+      value: BatchProcessor
+    - name: TestResultsFileName
+      type: String
+      value: junitresults.xml
