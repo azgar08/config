@@ -12,6 +12,7 @@ export TENV_AUTO_INSTALL=true
 export TERRAGRUNT_TFPATH=tofu
 
 echo "TENV_AUTO_INSTALL=$TENV_AUTO_INSTALL"
+
 tofu -v
 terragrunt --version
 
@@ -33,7 +34,7 @@ case "<+pipeline.variables.env_delegate>" in
       --role-session-name PRODSession)
     ;;
   *)
-    echo "ERROR: Unable to assume role for delegate."
+    echo "ERROR: Unable to assume role!"
     exit 1
     ;;
 esac
@@ -45,7 +46,7 @@ export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq -er '.Credentials.S
 aws sts get-caller-identity
 
 # Print deployment action
-echo "***** Deploy action: <+pipeline.variables.deploy_action> on <+pipeline.variables.environment> *****"
+echo "***** Deploy action: <+pipeline.variables.deploy_action> on <+pipeline.variables.environment> environment *****"
 
 # Retrieve packaged source from Artifactory
 unzip_path="/tmp/unzipped_archive"
@@ -68,18 +69,16 @@ echo "Downloading Redaction Glue package: $file_url"
 
 wget -O "$src_file" "$file_url"
 
-# Extract Redaction Glue source
+# Extract source
 echo "Extracting $src_file..."
 
 unzip -o "$src_file" -d "$target_src/glue"
 
 # Validate extracted source
-echo "Validating extracted Glue source..."
-
 test -f "$target_src/glue/glue_redaction.py"
 test -d "$target_src/glue/pci_redaction"
 
-echo "Extracted source files:"
+echo "Extracted source:"
 ls -lah "$target_src/glue"
 
 popd
@@ -95,19 +94,72 @@ git fetch
 git checkout "<+pipeline.variables.branch_name>"
 git branch
 
-# Move to Redaction Glue Terragrunt folder
+# Get S3 bucket from the existing Terragrunt dependency
+cd "/tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/s3/s3-pci-ingestion"
+
+S3_BUCKET=$(terragrunt output -raw s3_bucket_id)
+
+if [[ -z "$S3_BUCKET" ]]; then
+  echo "ERROR: Unable to retrieve PCI ingestion S3 bucket."
+  exit 1
+fi
+
+echo "Using S3 bucket: $S3_BUCKET"
+
+# Upload Glue entrypoint to S3
+echo "Uploading Glue entrypoint..."
+
+aws s3 cp "$target_src/glue/glue_redaction.py" \
+  "s3://${S3_BUCKET}/scripts/glue_redaction.py" \
+  --only-show-errors
+
+# Create Python package ZIP
+echo "Creating pci_redaction.zip..."
+
+cd "$target_src/glue"
+
+zip -qr pci_redaction.zip pci_redaction \
+  -x "*/__pycache__/*" "*.pyc" "*.pyo"
+
+test -s pci_redaction.zip
+
+echo "Python package:"
+ls -lh pci_redaction.zip
+
+# Upload Python package to S3
+echo "Uploading Python package..."
+
+aws s3 cp pci_redaction.zip \
+  "s3://${S3_BUCKET}/libs/pci_redaction.zip" \
+  --only-show-errors
+
+# Verify S3 uploads
+echo "Verifying uploaded S3 objects..."
+
+aws s3api head-object \
+  --bucket "$S3_BUCKET" \
+  --key "scripts/glue_redaction.py" >/dev/null
+
+aws s3api head-object \
+  --bucket "$S3_BUCKET" \
+  --key "libs/pci_redaction.zip" >/dev/null
+
+echo "Both Glue artifacts uploaded successfully."
+
+# Move to Redaction Glue Terragrunt directory
 cd "/tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
 
-# Terragrunt Plan
-echo "Running Terragrunt Plan..."
-
+# Update artifact reference
 sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
 
-terragrunt plan
+# Terragrunt Apply
+echo "Running Terragrunt Apply..."
 
-echo "Terragrunt Plan completed successfully."
+terragrunt apply --auto-approve
 
-# Clean up
+echo "PCI Redaction Glue deployment completed successfully."
+
+# Cleanup
 rm -rf /tmp/infrastructure.raas.terraform.live
 rm -rf "$unzip_path"
 rm -rf "$target_src"
