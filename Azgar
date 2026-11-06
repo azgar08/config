@@ -1,171 +1,177 @@
 
-#!/usr/bin/env bash
-set -euo pipefail
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
+}
 
-# Clean previous workspace
-rm -rf /tmp/infrastructure.raas.terraform.live
-rm -rf /tmp/src
-rm -rf /tmp/unzipped_archive
+variable "environment" {
+  description = "Deployment environment"
+  type        = string
+}
 
-# Verify tool versions
-export TENV_AUTO_INSTALL=true
-export TERRAGRUNT_TFPATH=tofu
+variable "project_name" {
+  description = "Project name"
+  type        = string
+}
 
-echo "TENV_AUTO_INSTALL=$TENV_AUTO_INSTALL"
+variable "account_name" {
+  description = "AWS account name"
+  type        = string
+}
 
-tofu -v
-terragrunt --version
+variable "glue_job_name" {
+  description = "AWS Glue job name"
+  type        = string
+}
 
-# Assume the Terraform role
-case "<+pipeline.variables.env_delegate>" in
-  dev-iac-delegate)
-    aws_credentials_json=$(aws sts assume-role \
-      --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role \
-      --role-session-name DEVSession)
-    ;;
-  nonprod-iac-delegate)
-    aws_credentials_json=$(aws sts assume-role \
-      --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role \
-      --role-session-name NONPRODSession)
-    ;;
-  prod-iac-delegate)
-    aws_credentials_json=$(aws sts assume-role \
-      --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role \
-      --role-session-name PRODSession)
-    ;;
-  *)
-    echo "ERROR: Unable to assume role!"
-    exit 1
-    ;;
-esac
+variable "glue_job_role_arn" {
+  description = "IAM role ARN used by the Glue job"
+  type        = string
+}
 
-export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq -er '.Credentials.AccessKeyId')
-export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq -er '.Credentials.SecretAccessKey')
-export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq -er '.Credentials.SessionToken')
+variable "s3_glue_bucket" {
+  description = "S3 bucket used for Glue scripts and libraries"
+  type        = string
+}
 
-aws sts get-caller-identity
+variable "glue_artifacts" {
+  description = "Packaged local files to upload to S3"
 
-# Print deployment action
-echo "***** Deploy action: <+pipeline.variables.deploy_action> on <+pipeline.variables.environment> environment *****"
+  type = list(object({
+    name        = string
+    type        = string
+    source_path = string
+    s3_key      = string
+  }))
 
-# Retrieve packaged source from Artifactory
-unzip_path="/tmp/unzipped_archive"
-target_src="/tmp/src"
+  default = []
 
-mkdir -p "$unzip_path"
-mkdir -p "$target_src/glue"
+  validation {
+    condition = alltrue([
+      for artifact in var.glue_artifacts :
+      contains(["script", "library"], artifact.type)
+    ])
 
-pushd "$unzip_path"
+    error_message = "Artifact type must be script or library."
+  }
 
-if [ "<+pipeline.variables.package_version>" = "NA" ]; then
-  src_file="<+pipeline.variables.trigger_package>"
-else
-  src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
-fi
+  validation {
+    condition = (
+      length(distinct([
+        for artifact in var.glue_artifacts : artifact.name
+      ])) == length(var.glue_artifacts)
+    )
 
-file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
+    error_message = "Every artifact must have a unique name."
+  }
 
-echo "Downloading Redaction Glue package: $file_url"
+  validation {
+    condition = (
+      length(distinct([
+        for artifact in var.glue_artifacts : artifact.s3_key
+      ])) == length(var.glue_artifacts)
+    )
 
-wget -O "$src_file" "$file_url"
+    error_message = "Every artifact must have a unique S3 key."
+  }
 
-# Extract source
-echo "Extracting $src_file..."
+  validation {
+    condition = alltrue([
+      for artifact in var.glue_artifacts :
+      length(trimspace(artifact.name)) > 0 &&
+      length(trimspace(artifact.source_path)) > 0 &&
+      length(trimspace(artifact.s3_key)) > 0
+    ])
 
-unzip -o "$src_file" -d "$target_src/glue"
+    error_message = "Artifact name, source path and S3 key cannot be empty."
+  }
+}
 
-# Validate extracted source
-test -f "$target_src/glue/glue_redaction.py"
-test -d "$target_src/glue/pci_redaction"
+variable "glue_script_artifact_name" {
+  description = "Name of the entry script artifact"
+  type        = string
+}
 
-echo "Extracted source:"
-ls -lah "$target_src/glue"
+variable "glue_library_artifact_names" {
+  description = "Names of Python library artifacts"
+  type        = list(string)
+  default     = []
+}
 
-popd
+variable "glue_extra_libs" {
+  description = "Additional external S3 Python library paths"
+  type        = list(string)
+  default     = []
+}
 
-# Clone IaC source from Bitbucket
-cd /tmp
+variable "glue_version" {
+  description = "AWS Glue version"
+  type        = string
+  default     = "5.0"
+}
 
-git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
+variable "python_version" {
+  description = "Glue Python version"
+  type        = string
+  default     = "3"
+}
 
-cd /tmp/infrastructure.raas.terraform.live
+variable "glue_job_execution_class" {
+  description = "Glue execution class"
+  type        = string
+  default     = "STANDARD"
+}
 
-git fetch
-git checkout "<+pipeline.variables.branch_name>"
-git branch
+variable "worker_type" {
+  description = "Glue worker type"
+  type        = string
+  default     = "G.1X"
+}
 
-# Get S3 bucket from the existing Terragrunt dependency
-cd "/tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/s3/s3-pci-ingestion"
+variable "number_of_workers" {
+  description = "Number of Glue workers"
+  type        = number
+  default     = 2
+}
 
-S3_BUCKET=$(terragrunt output -raw s3_bucket_id)
+variable "glue_job_max_concur" {
+  description = "Maximum concurrent Glue job runs"
+  type        = number
+  default     = 1
+}
 
-if [[ -z "$S3_BUCKET" ]]; then
-  echo "ERROR: Unable to retrieve PCI ingestion S3 bucket."
-  exit 1
-fi
+variable "timeout" {
+  description = "Glue job timeout in minutes"
+  type        = number
+  default     = 60
+}
 
-echo "Using S3 bucket: $S3_BUCKET"
+variable "max_retries" {
+  description = "Maximum Glue job retries"
+  type        = number
+  default     = 0
+}
 
-# Upload Glue entrypoint to S3
-echo "Uploading Glue entrypoint..."
+variable "glue_security_cfg" {
+  description = "Glue security configuration name"
+  type        = string
+  default     = ""
+}
 
-aws s3 cp "$target_src/glue/glue_redaction.py" \
-  "s3://${S3_BUCKET}/scripts/glue_redaction.py" \
-  --only-show-errors
+variable "glue_job_connection" {
+  description = "Glue connections"
+  type        = list(string)
+  default     = []
+}
 
-# Create Python package ZIP
-echo "Creating pci_redaction.zip..."
+variable "default_arguments" {
+  description = "Default arguments passed to the Glue job"
+  type        = map(string)
+  default     = {}
+}
 
-cd "$target_src/glue"
-
-zip -qr pci_redaction.zip pci_redaction \
-  -x "*/__pycache__/*" "*.pyc" "*.pyo"
-
-test -s pci_redaction.zip
-
-echo "Python package:"
-ls -lh pci_redaction.zip
-
-# Upload Python package to S3
-echo "Uploading Python package..."
-
-aws s3 cp pci_redaction.zip \
-  "s3://${S3_BUCKET}/libs/pci_redaction.zip" \
-  --only-show-errors
-
-# Verify S3 uploads
-echo "Verifying uploaded S3 objects..."
-
-aws s3api head-object \
-  --bucket "$S3_BUCKET" \
-  --key "scripts/glue_redaction.py" >/dev/null
-
-aws s3api head-object \
-  --bucket "$S3_BUCKET" \
-  --key "libs/pci_redaction.zip" >/dev/null
-
-echo "Both Glue artifacts uploaded successfully."
-
-# Move to Redaction Glue Terragrunt directory
-cd "/tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
-
-# Update artifact reference
-sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
-
-# Terragrunt Apply
-echo "Running Terragrunt Apply..."
-
-terragrunt apply --auto-approve
-
-echo "PCI Redaction Glue deployment completed successfully."
-
-# Cleanup
-rm -rf /tmp/infrastructure.raas.terraform.live
-rm -rf "$unzip_path"
-rm -rf "$target_src"
-
-unset AWS_ACCESS_KEY_ID
-unset AWS_SECRET_ACCESS_KEY
-unset AWS_SESSION_TOKEN
-unset TENV_AUTO_INSTALL
-unset TERRAGRUNT_TFPATH
+variable "tags" {
+  description = "Resource tags"
+  type        = map(string)
+  default     = {}
+}
