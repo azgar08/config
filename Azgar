@@ -1,34 +1,65 @@
+set -euo pipefail
 
-resource "aws_glue_job" "this" {
-  name     = var.glue_job_name
-  role_arn = var.glue_job_role_arn
+export DEBIAN_FRONTEND=noninteractive
 
-  glue_version    = var.glue_version
-  execution_class = var.glue_job_execution_class
+apt-get update
+apt-get install -y zip unzip
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 
-  worker_type       = var.worker_type
-  number_of_workers = var.number_of_workers
+echo "Preparing Batch Processor package..."
 
-  timeout     = var.timeout
-  max_retries = var.max_retries
+export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
 
-  execution_property {
-    max_concurrent_runs = var.glue_job_max_concur
-  }
+MODULE_DIR="glue/<+pipeline.variables.moduleName>"
+PACKAGE_ROOT="$PWD"
+PACKAGE_DIR="$(mktemp -d)"
 
-  command {
-    name            = "glueetl"
-    script_location = local.glue_script_location
-    python_version  = var.python_version
-  }
+export packaged_file="<+pipeline.variables.moduleName>-${package_version}.zip"
 
-  default_arguments = local.default_glue_arguments
+trap 'rm -rf "$PACKAGE_DIR"' EXIT
 
-  security_configuration = (
-    var.glue_security_cfg != "" ? var.glue_security_cfg : null
-  )
+if [ ! -f "$MODULE_DIR/src/glue_redaction.py" ]; then
+  echo "ERROR: glue_redaction.py not found!"
+  exit 1
+fi
 
-  connections = var.glue_job_connection
+if [ ! -d "$MODULE_DIR/src/pci_redaction" ]; then
+  echo "ERROR: pci_redaction directory not found!"
+  exit 1
+fi
 
-  tags = var.tags
-}
+if [ ! -f "$MODULE_DIR/requirements.txt" ]; then
+  echo "ERROR: requirements.txt not found!"
+  exit 1
+fi
+
+echo "Installing runtime dependencies..."
+
+python -m pip install \
+  --no-cache-dir \
+  --target "$PACKAGE_DIR" \
+  -r "$MODULE_DIR/requirements.txt"
+
+echo "Copying Glue application source..."
+
+cp "$MODULE_DIR/src/glue_redaction.py" "$PACKAGE_DIR/"
+cp -R "$MODULE_DIR/src/pci_redaction" "$PACKAGE_DIR/"
+cp "$MODULE_DIR/requirements.txt" "$PACKAGE_DIR/"
+
+echo "Creating deployment ZIP..."
+
+(cd "$PACKAGE_DIR" && zip -r "$PACKAGE_ROOT/$packaged_file" . \
+  -x "*/__pycache__/*" "*.pyc" "*.pyo")
+
+echo "Validating deployment ZIP..."
+
+unzip -t "$packaged_file"
+
+if [ ! -s "$packaged_file" ]; then
+  echo "ERROR: Package ZIP is missing or empty!"
+  exit 1
+fi
+
+echo "Package: $packaged_file"
+echo "Version: $package_version"
