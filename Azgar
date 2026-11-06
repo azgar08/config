@@ -1,23 +1,30 @@
+
 pipeline:
   name: Deploy Redaction Batch Ingestion Glue
   identifier: Deploy_Redaction_Batch_Ingestion_Glue
   projectIdentifier: RaaS
   orgIdentifier: Payments
   tags: {}
+
   stages:
     - parallel:
+        # ==========================================
+        # LOWER ENVIRONMENTS - DEV / NONPROD
+        # ==========================================
         - stage:
-            name: "Deploy Redaction Batch Ingestion Glue-Lower "
-            identifier: Deploy_RAAS_DL_Open_Invoice_Processor_Glue_DEV
-            description: ""
+            name: Deploy Redaction Batch Ingestion Glue-Lower
+            identifier: Deploy_Redaction_Batch_Ingestion_Glue_Lower
             type: Custom
             spec:
               execution:
                 steps:
+                  # ------------------------------
+                  # PLAN
+                  # ------------------------------
                   - step:
                       type: ShellScript
-                      name: Redaction Batch Ingestion Glue Terragrunt Apply Plan
-                      identifier: Redaction_Batch_Ingestion_Glue_Terragrunt_Plan
+                      name: Redaction Glue Terragrunt Plan
+                      identifier: Redaction_Glue_Terragrunt_Plan
                       spec:
                         shell: Bash
                         executionTarget: {}
@@ -25,100 +32,90 @@ pipeline:
                           type: Inline
                           spec:
                             script: |-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf /tmp/src
+                              set -euo pipefail
 
-                              # Verify tool versions
                               export TENV_AUTO_INSTALL=true
-                              echo TENV_AUTO_INSTALL
-
                               export TERRAGRUNT_TFPATH=tofu
 
                               tofu -v
 
-                              #Assume the TF Role
-                              case <+pipeline.variables.env_delegate> in
+                              case "<+pipeline.variables.env_delegate>" in
                                 dev-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                    ;;
+                                  ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
+                                  ;;
                                 nonprod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                    ;;
+                                  ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
+                                  ;;
                                 prod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                    ;;
-                                    *)
-                                echo "Unable to assume role!"
+                                  ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
+                                  ;;
+                                *)
+                                  echo "Invalid delegate"
+                                  exit 1
+                                  ;;
                               esac
-                              export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                              export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                              export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
+
+                              CREDS=$(aws sts assume-role \
+                                --role-arn "$ROLE_ARN" \
+                                --role-session-name RedactionGluePlan)
+
+                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+
                               aws sts get-caller-identity
 
-                              # Print out deployment action for TeamApproval step on higher environment
-                              echo "*****Deploy action will be performed '<+pipeline.variables.deploy_action>' on '<+pipeline.variables.environment>' environment*****"
+                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
 
-                              # Retrieve packaged source from Artifactory
-                              unzip_path="/tmp/unzipped_archive"
-                              target_src="/tmp/src"
-                              mkdir $unzip_path
-                              mkdir $target_src
-                              mkdir $target_src/glue
-                              pushd $unzip_path
+                              mkdir -p /tmp/src/glue /tmp/unzipped_archive
+
+                              cd /tmp/unzipped_archive
 
                               if [ "<+pipeline.variables.package_version>" = "NA" ]; then
                                 src_file="<+pipeline.variables.trigger_package>"
-                                package_version=$(echo "<+pipeline.variables.trigger_package>" | awk -F"-" '{print $NF}')
-                                package_version=${package_version%.*}
                               else
                                 src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
                               fi
+
                               file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
 
-                              set -e
-                              echo "Download file from $file_url for application source"
+                              echo "Downloading $file_url"
                               wget "$file_url"
 
-                              echo "Unzipping $src_file and moving source code to $target_src"
-                              unzip -o $src_file
-                              rm $src_file
-                              mv open_invoice_* $target_src/glue
-                              ls -l $target_src/glue
-                              popd
+                              unzip -o "$src_file" -d /tmp/src/glue
 
-                              # Clone IaC source from BB
+                              test -f /tmp/src/glue/glue_redaction.py
+                              test -d /tmp/src/glue/pci_redaction
+
                               cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git 
-                              cd  infrastructure.raas.terraform.live
-                              git fetch
-                              git checkout <+pipeline.variables.branch_name>
-                              git branch
+                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
 
-                              # Move to the proper module terragrunt folder to execute deployment
-                              cd /tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/glue/glue-open-invoice-processor
+                              cd /tmp/infrastructure.raas.terraform.live
+                              git checkout "<+pipeline.variables.branch_name>"
 
+                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
 
-                              # Terragrunt Plan
                               sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
+
+                              echo "Running Redaction Glue Terragrunt Plan"
                               terragrunt plan
 
-                              # Clean Up
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf $unzip_path
-                              rm -rf $target_src
-                              unset AWS_ACCESS_KEY_ID
-                              unset AWS_SECRET_ACCESS_KEY
-                              unset AWS_SESSION_TOKEN
-                              unset TENV_AUTO_INSTALL
+                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
+
+                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
                         environmentVariables: []
                         outputVariables: []
                       timeout: 45m
+
+                  # ------------------------------
+                  # APPLY APPROVAL
+                  # ------------------------------
                   - step:
                       type: HarnessApproval
-                      name: Open Invoice Processor Glue Terragrunt Apply Approval
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Apply_Approval
+                      name: Redaction Glue Apply Approval
+                      identifier: Redaction_Glue_Apply_Approval
                       spec:
-                        approvalMessage: Please review the following information and approve the pipeline progression
+                        approvalMessage: Please review the Redaction Batch Ingestion Glue deployment plan and approve.
                         includePipelineExecutionHistory: true
                         isAutoRejectEnabled: false
                         approvers:
@@ -133,12 +130,16 @@ pipeline:
                       when:
                         stageStatus: Success
                         condition: <+pipeline.variables.deploy_action> == "apply" && <+pipeline.triggerType> == "MANUAL"
+
+                  # ------------------------------
+                  # DESTROY APPROVAL
+                  # ------------------------------
                   - step:
                       type: HarnessApproval
-                      name: Open Invoice Processor Glue Terragrunt Destroy Approval
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Destroy_Approval
+                      name: Redaction Glue Destroy Approval
+                      identifier: Redaction_Glue_Destroy_Approval
                       spec:
-                        approvalMessage: Please review the following information and approve the pipeline progression
+                        approvalMessage: Please review and approve the Redaction Batch Ingestion Glue destroy operation.
                         includePipelineExecutionHistory: true
                         isAutoRejectEnabled: false
                         approvers:
@@ -151,10 +152,14 @@ pipeline:
                       when:
                         stageStatus: Success
                         condition: <+pipeline.variables.deploy_action> == "destroy"
+
+                  # ------------------------------
+                  # APPLY
+                  # ------------------------------
                   - step:
                       type: ShellScript
-                      name: Open Invoice Processor Glue Terragrunt Apply
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Apply
+                      name: Redaction Glue Terragrunt Apply
+                      identifier: Redaction_Glue_Terragrunt_Apply
                       spec:
                         shell: Bash
                         executionTarget: {}
@@ -162,101 +167,82 @@ pipeline:
                           type: Inline
                           spec:
                             script: |-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf /tmp/src
+                              set -euo pipefail
 
-                              # Verify tool versions
                               export TENV_AUTO_INSTALL=true
-                              echo TENV_AUTO_INSTALL
-
                               export TERRAGRUNT_TFPATH=tofu
 
-                              tofu -v
-
-                              #Assume the TF Role
-                              case <+pipeline.variables.env_delegate> in
+                              case "<+pipeline.variables.env_delegate>" in
                                 dev-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                    ;;
+                                  ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
+                                  ;;
                                 nonprod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                    ;;
+                                  ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
+                                  ;;
                                 prod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                    ;;
-                                    *)
-                                echo "Unable to assume role!"
+                                  ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
+                                  ;;
+                                *)
+                                  echo "Invalid delegate"
+                                  exit 1
+                                  ;;
                               esac
-                              export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                              export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                              export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
+
+                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGlueApply)
+
+                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+
                               aws sts get-caller-identity
 
-                              # Print out deployment action for TeamApproval step on higher environment
-                              echo "*****Deploy action will be performed '<+pipeline.variables.deploy_action>' on '<+pipeline.variables.environment>' environment*****"
+                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
+                              mkdir -p /tmp/src/glue /tmp/unzipped_archive
 
-                              # Retrieve packaged source from Artifactory
-                              unzip_path="/tmp/unzipped_archive"
-                              target_src="/tmp/src"
-                              mkdir $unzip_path
-                              mkdir $target_src
-                              mkdir $target_src/glue
-                              pushd $unzip_path
+                              cd /tmp/unzipped_archive
 
                               if [ "<+pipeline.variables.package_version>" = "NA" ]; then
                                 src_file="<+pipeline.variables.trigger_package>"
-                                package_version=$(echo "<+pipeline.variables.trigger_package>" | awk -F"-" '{print $NF}')
-                                package_version=${package_version%.*}
                               else
                                 src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
                               fi
+
                               file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
 
-                              set -e
-                              echo "Download file from $file_url for application source"
                               wget "$file_url"
+                              unzip -o "$src_file" -d /tmp/src/glue
 
-                              echo "Unzipping $src_file and moving source code to $target_src"
-                              unzip -o $src_file
-                              rm $src_file
-                              mv open_invoice_* $target_src/glue
-                              ls -l $target_src/glue
-                              popd
+                              test -f /tmp/src/glue/glue_redaction.py
+                              test -d /tmp/src/glue/pci_redaction
 
-                              # Clone IaC source from BB
                               cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git 
-                              cd  infrastructure.raas.terraform.live
-                              git fetch
-                              git checkout <+pipeline.variables.branch_name>
-                              git branch
+                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
 
-                              # Move to the proper module terragrunt folder to execute deployment
-                              cd /tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/glue/glue-open-invoice-processor
+                              cd /tmp/infrastructure.raas.terraform.live
+                              git checkout "<+pipeline.variables.branch_name>"
 
+                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
 
-                              # Terragrunt Plan
                               sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
+
                               terragrunt apply --auto-approve
 
-                              # Clean Up
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf $unzip_path
-                              rm -rf $target_src
-                              unset AWS_ACCESS_KEY_ID
-                              unset AWS_SECRET_ACCESS_KEY
-                              unset AWS_SESSION_TOKEN
-                              unset TENV_AUTO_INSTALL
+                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
+                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
                         environmentVariables: []
                         outputVariables: []
                       timeout: 45m
                       when:
                         stageStatus: Success
                         condition: <+pipeline.variables.deploy_action> == "apply"
+
+                  # ------------------------------
+                  # DESTROY
+                  # ------------------------------
                   - step:
                       type: ShellScript
-                      name: "Open Invoice Processor Glue Terragrunt Destroy "
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Destroy
+                      name: Redaction Glue Terragrunt Destroy
+                      identifier: Redaction_Glue_Terragrunt_Destroy
                       spec:
                         shell: Bash
                         executionTarget: {}
@@ -264,92 +250,49 @@ pipeline:
                           type: Inline
                           spec:
                             script: |-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf /tmp/src
+                              set -euo pipefail
 
-                              # Verify tool versions
                               export TENV_AUTO_INSTALL=true
-                              echo TENV_AUTO_INSTALL
-
                               export TERRAGRUNT_TFPATH=tofu
 
-                              tofu -v
-
-                              #Assume the TF Role
-                              case <+pipeline.variables.env_delegate> in
+                              case "<+pipeline.variables.env_delegate>" in
                                 dev-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                    ;;
+                                  ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
+                                  ;;
                                 nonprod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                    ;;
+                                  ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
+                                  ;;
                                 prod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                    ;;
-                                    *)
-                                echo "Unable to assume role!"
+                                  ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
+                                  ;;
+                                *)
+                                  echo "Invalid delegate"
+                                  exit 1
+                                  ;;
                               esac
-                              export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                              export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                              export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
+
+                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGlueDestroy)
+
+                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+
                               aws sts get-caller-identity
 
-                              # Print out deployment action for TeamApproval step on higher environment
-                              echo "*****Deploy action will be performed '<+pipeline.variables.deploy_action>' on '<+pipeline.variables.environment>' environment*****"
+                              rm -rf /tmp/infrastructure.raas.terraform.live
 
-                              # Retrieve packaged source from Artifactory
-                              unzip_path="/tmp/unzipped_archive"
-                              target_src="/tmp/src"
-                              mkdir $unzip_path
-                              mkdir $target_src
-                              mkdir $target_src/glue
-                              pushd $unzip_path
-
-                              if [ "<+pipeline.variables.package_version>" = "NA" ]; then
-                                src_file="<+pipeline.variables.trigger_package>"
-                                package_version=$(echo "<+pipeline.variables.trigger_package>" | awk -F"-" '{print $NF}')
-                                package_version=${package_version%.*}
-                              else
-                                src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
-                              fi
-                              file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
-
-                              echo "Download file from $file_url for application source"
-                              wget "$file_url"
-
-                              echo "Unzipping $src_file and moving source code to $target_src"
-                              unzip -o $src_file
-                              rm $src_file
-                              mv open_invoice_* $target_src/glue
-                              ls -l $target_src/glue
-                              popd
-
-                              # Clone IaC source from BB
                               cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git 
-                              cd  infrastructure.raas.terraform.live
-                              git fetch
-                              git checkout <+pipeline.variables.branch_name>
-                              git branch
+                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
 
-                              # Print out deployment action for TeamApproval step on higher environment
-                              echo "*****Deploy action will be performed '<+pipeline.variables.deploy_action>' on '<+pipeline.variables.environment>' environment*****"
+                              cd /tmp/infrastructure.raas.terraform.live
+                              git checkout "<+pipeline.variables.branch_name>"
 
-                              # Move to the proper module terragrunt folder to execute deployment
-                              cd /tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/glue/glue-open-invoice-processor
+                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
 
-
-                              # Terragrunt Plan
                               terragrunt destroy --auto-approve
 
-                              # Clean Up
                               rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf $unzip_path
-                              rm -rf $target_src
-                              unset AWS_ACCESS_KEY_ID
-                              unset AWS_SECRET_ACCESS_KEY
-                              unset AWS_SESSION_TOKEN
-                              unset TENV_AUTO_INSTALL
+                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
                         environmentVariables: []
                         outputVariables: []
                       timeout: 45m
@@ -360,18 +303,21 @@ pipeline:
             when:
               pipelineStatus: Success
               condition: <+pipeline.variables.aws_lz> == "DEV" || <+pipeline.variables.aws_lz> == "NONPROD"
+
+        # ==========================================
+        # HIGHER ENVIRONMENT - PROD
+        # ==========================================
         - stage:
             name: Deploy Redaction Batch Ingestion Glue-Higher
-            identifier: Deploy_RAAS_DL_Open_Invoice_Processor_GlueHigher
-            description: ""
+            identifier: Deploy_Redaction_Batch_Ingestion_Glue_Higher
             type: Custom
             spec:
               execution:
                 steps:
                   - step:
                       type: ShellScript
-                      name: Open Invoice Processor Glue Terragrunt Apply Plan
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Apply_Plan
+                      name: Redaction Glue Terragrunt Plan
+                      identifier: Redaction_Glue_Terragrunt_Plan_Higher
                       spec:
                         shell: Bash
                         executionTarget: {}
@@ -379,100 +325,78 @@ pipeline:
                           type: Inline
                           spec:
                             script: |-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf /tmp/src
+                              set -euo pipefail
 
-                              # Verify tool versions
                               export TENV_AUTO_INSTALL=true
-                              echo TENV_AUTO_INSTALL
-
                               export TERRAGRUNT_TFPATH=tofu
 
-                              tofu -v
-
-                              #Assume the TF Role
-                              case <+pipeline.variables.env_delegate> in
+                              case "<+pipeline.variables.env_delegate>" in
                                 dev-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                    ;;
+                                  ROLE_ARN="arn:aws:iam::697179190149:role/Terraform-Admin-Role"
+                                  ;;
                                 nonprod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                    ;;
+                                  ROLE_ARN="arn:aws:iam::518383396166:role/Terraform-Admin-Role"
+                                  ;;
                                 prod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                    ;;
-                                    *)
-                                echo "Unable to assume role!"
+                                  ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
+                                  ;;
+                                *)
+                                  echo "Invalid delegate"
+                                  exit 1
+                                  ;;
                               esac
-                              export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                              export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                              export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
+
+                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGluePlan)
+
+                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+
                               aws sts get-caller-identity
 
-                              # Print out deployment action for TeamApproval step on higher environment
-                              echo "*****Deploy action will be performed '<+pipeline.variables.deploy_action>' on '<+pipeline.variables.environment>' environment*****"
+                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
+                              mkdir -p /tmp/src/glue /tmp/unzipped_archive
 
-                              # Retrieve packaged source from Artifactory
-                              unzip_path="/tmp/unzipped_archive"
-                              target_src="/tmp/src"
-                              mkdir $unzip_path
-                              mkdir $target_src
-                              mkdir $target_src/glue
-                              pushd $unzip_path
+                              cd /tmp/unzipped_archive
 
                               if [ "<+pipeline.variables.package_version>" = "NA" ]; then
                                 src_file="<+pipeline.variables.trigger_package>"
-                                package_version=$(echo "<+pipeline.variables.trigger_package>" | awk -F"-" '{print $NF}')
-                                package_version=${package_version%.*}
                               else
                                 src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
                               fi
+
                               file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
 
-                              set -e
-                              echo "Download file from $file_url for application source"
                               wget "$file_url"
+                              unzip -o "$src_file" -d /tmp/src/glue
 
-                              echo "Unzipping $src_file and moving source code to $target_src"
-                              unzip -o $src_file
-                              rm $src_file
-                              mv open_invoice_* $target_src/glue
-                              ls -l $target_src/glue
-                              popd
+                              test -f /tmp/src/glue/glue_redaction.py
+                              test -d /tmp/src/glue/pci_redaction
 
-                              # Clone IaC source from BB
                               cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git 
-                              cd  infrastructure.raas.terraform.live
-                              git fetch
-                              git checkout <+pipeline.variables.branch_name>
-                              git branch
+                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
 
-                              # Move to the proper module terragrunt folder to execute deployment
-                              cd /tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/glue/glue-open-invoice-processor
+                              cd /tmp/infrastructure.raas.terraform.live
+                              git checkout "<+pipeline.variables.branch_name>"
 
+                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
 
-                              # Terragrunt Plan
                               sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
+
                               terragrunt plan
 
-                              # Clean Up
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf $unzip_path
-                              rm -rf $target_src
-                              unset AWS_ACCESS_KEY_ID
-                              unset AWS_SECRET_ACCESS_KEY
-                              unset AWS_SESSION_TOKEN
-                              unset TENV_AUTO_INSTALL
+                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
+                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
                         environmentVariables: []
                         outputVariables: []
                       timeout: 45m
+
                   - step:
                       type: HarnessApproval
-                      name: Open Invoice Processor Glue Terragrunt Apply Approval
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Apply_Approval
+                      name: Redaction Glue Apply Approval
+                      identifier: Redaction_Glue_Apply_Approval_Higher
                       spec:
-                        approvalMessage: Please review the following information and approve the pipeline progression
+                        approvalMessage: Review and approve the Redaction Batch Ingestion Glue PROD deployment.
                         includePipelineExecutionHistory: true
                         isAutoRejectEnabled: false
                         approvers:
@@ -485,12 +409,13 @@ pipeline:
                       when:
                         stageStatus: Success
                         condition: <+pipeline.variables.deploy_action> == "apply"
+
                   - step:
                       type: HarnessApproval
-                      name: Open Invoice Processor Glue Terragrunt Destroy Approval
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Destroy_Approval
+                      name: Redaction Glue Destroy Approval
+                      identifier: Redaction_Glue_Destroy_Approval_Higher
                       spec:
-                        approvalMessage: Please review the following information and approve the pipeline progression
+                        approvalMessage: Review and approve the Redaction Batch Ingestion Glue PROD destroy operation.
                         includePipelineExecutionHistory: true
                         isAutoRejectEnabled: false
                         approvers:
@@ -503,10 +428,11 @@ pipeline:
                       when:
                         stageStatus: Success
                         condition: <+pipeline.variables.deploy_action> == "destroy"
+
                   - step:
                       type: ShellScript
-                      name: Open Invoice Processor Glue Terragrunt Apply
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Apply
+                      name: Redaction Glue Terragrunt Apply
+                      identifier: Redaction_Glue_Terragrunt_Apply_Higher
                       spec:
                         shell: Bash
                         executionTarget: {}
@@ -514,101 +440,65 @@ pipeline:
                           type: Inline
                           spec:
                             script: |-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf /tmp/src
+                              set -euo pipefail
 
-                              # Verify tool versions
                               export TENV_AUTO_INSTALL=true
-                              echo TENV_AUTO_INSTALL
-
                               export TERRAGRUNT_TFPATH=tofu
 
-                              tofu -v
+                              ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
 
-                              #Assume the TF Role
-                              case <+pipeline.variables.env_delegate> in
-                                dev-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                    ;;
-                                nonprod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                    ;;
-                                prod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                    ;;
-                                    *)
-                                echo "Unable to assume role!"
-                              esac
-                              export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                              export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                              export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
+                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGlueApply)
+
+                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+
                               aws sts get-caller-identity
 
-                              # Print out deployment action for TeamApproval step on higher environment
-                              echo "*****Deploy action will be performed '<+pipeline.variables.deploy_action>' on '<+pipeline.variables.environment>' environment*****"
+                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
+                              mkdir -p /tmp/src/glue /tmp/unzipped_archive
 
-                              # Retrieve packaged source from Artifactory
-                              unzip_path="/tmp/unzipped_archive"
-                              target_src="/tmp/src"
-                              mkdir $unzip_path
-                              mkdir $target_src
-                              mkdir $target_src/glue
-                              pushd $unzip_path
+                              cd /tmp/unzipped_archive
 
                               if [ "<+pipeline.variables.package_version>" = "NA" ]; then
                                 src_file="<+pipeline.variables.trigger_package>"
-                                package_version=$(echo "<+pipeline.variables.trigger_package>" | awk -F"-" '{print $NF}')
-                                package_version=${package_version%.*}
                               else
                                 src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
                               fi
+
                               file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
 
-                              set -e
-                              echo "Download file from $file_url for application source"
                               wget "$file_url"
+                              unzip -o "$src_file" -d /tmp/src/glue
 
-                              echo "Unzipping $src_file and moving source code to $target_src"
-                              unzip -o $src_file
-                              rm $src_file
-                              mv open_invoice_* $target_src/glue
-                              ls -l $target_src/glue
-                              popd
+                              test -f /tmp/src/glue/glue_redaction.py
+                              test -d /tmp/src/glue/pci_redaction
 
-                              # Clone IaC source from BB
                               cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git 
-                              cd  infrastructure.raas.terraform.live
-                              git fetch
-                              git checkout <+pipeline.variables.branch_name>
-                              git branch
+                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
 
-                              # Move to the proper module terragrunt folder to execute deployment
-                              cd /tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/glue/glue-open-invoice-processor
+                              cd /tmp/infrastructure.raas.terraform.live
+                              git checkout "<+pipeline.variables.branch_name>"
 
+                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
 
-                              # Terragrunt Plan
                               sed -i "s/REPLACE/$src_file/g" terragrunt.hcl
+
                               terragrunt apply --auto-approve
 
-                              # Clean Up
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf $unzip_path
-                              rm -rf $target_src
-                              unset AWS_ACCESS_KEY_ID
-                              unset AWS_SECRET_ACCESS_KEY
-                              unset AWS_SESSION_TOKEN
-                              unset TENV_AUTO_INSTALL
+                              rm -rf /tmp/infrastructure.raas.terraform.live /tmp/src /tmp/unzipped_archive
+                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
                         environmentVariables: []
                         outputVariables: []
                       timeout: 45m
                       when:
                         stageStatus: Success
                         condition: <+pipeline.variables.deploy_action> == "apply"
+
                   - step:
                       type: ShellScript
-                      name: Open Invoice Processor Glue Terragrunt Destroy
-                      identifier: Open_Invoice_Processor_Glue_Terragrunt_Destroy
+                      name: Redaction Glue Terragrunt Destroy
+                      identifier: Redaction_Glue_Terragrunt_Destroy_Higher
                       spec:
                         shell: Bash
                         executionTarget: {}
@@ -616,92 +506,35 @@ pipeline:
                           type: Inline
                           spec:
                             script: |-
-                              rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf /tmp/src
+                              set -euo pipefail
 
-                              # Verify tool versions
                               export TENV_AUTO_INSTALL=true
-                              echo TENV_AUTO_INSTALL
-
                               export TERRAGRUNT_TFPATH=tofu
 
-                              tofu -v
+                              ROLE_ARN="arn:aws:iam::908976231039:role/Terraform-Admin-Role"
 
-                              #Assume the TF Role
-                              case <+pipeline.variables.env_delegate> in
-                                dev-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                    ;;
-                                nonprod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                    ;;
-                                prod-iac-delegate)
-                                    aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                    ;;
-                                    *)
-                                echo "Unable to assume role!"
-                              esac
-                              export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                              export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                              export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
+                              CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name RedactionGlueDestroy)
+
+                              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+                              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+                              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+
                               aws sts get-caller-identity
 
-                              # Print out deployment action for TeamApproval step on higher environment
-                              echo "*****Deploy action will be performed '<+pipeline.variables.deploy_action>' on '<+pipeline.variables.environment>' environment*****"
+                              rm -rf /tmp/infrastructure.raas.terraform.live
 
-                              # Retrieve packaged source from Artifactory
-                              unzip_path="/tmp/unzipped_archive"
-                              target_src="/tmp/src"
-                              mkdir $unzip_path
-                              mkdir $target_src
-                              mkdir $target_src/glue
-                              pushd $unzip_path
-
-                              if [ "<+pipeline.variables.package_version>" = "NA" ]; then
-                                src_file="<+pipeline.variables.trigger_package>"
-                                package_version=$(echo "<+pipeline.variables.trigger_package>" | awk -F"-" '{print $NF}')
-                                package_version=${package_version%.*}
-                              else
-                                src_file="<+pipeline.variables.module_name>-<+pipeline.variables.package_version>.zip"
-                              fi
-                              file_url="<+pipeline.variables.artifactory_url>/<+pipeline.variables.artifactory_repo>/<+pipeline.variables.framework_name>/$src_file"
-
-                              echo "Download file from $file_url for application source"
-                              wget "$file_url"
-
-                              echo "Unzipping $src_file and moving source code to $target_src"
-                              unzip -o $src_file
-                              rm $src_file
-                              mv open_invoice_* $target_src/glue
-                              ls -l $target_src/glue
-                              popd
-
-                              # Clone IaC source from BB
                               cd /tmp
-                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git 
-                              cd  infrastructure.raas.terraform.live
-                              git fetch
-                              git checkout <+pipeline.variables.branch_name>
-                              git branch
+                              git clone git@bitbucket.org:deluxe-development/infrastructure.raas.terraform.live.git
 
-                              # Print out deployment action for TeamApproval step on higher environment
-                              echo "*****Deploy action will be performed '<+pipeline.variables.deploy_action>' on '<+pipeline.variables.environment>' environment*****"
+                              cd /tmp/infrastructure.raas.terraform.live
+                              git checkout "<+pipeline.variables.branch_name>"
 
-                              # Move to the proper module terragrunt folder to execute deployment
-                              cd /tmp/infrastructure.raas.terraform.live/<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/glue/glue-open-invoice-processor
+                              cd "<+pipeline.variables.aws_lz>/<+pipeline.variables.aws_region>/<+pipeline.variables.environment>/pci-redaction/glues/glue-batch-processor"
 
-
-                              # Terragrunt Plan
                               terragrunt destroy --auto-approve
 
-                              # Clean Up
                               rm -rf /tmp/infrastructure.raas.terraform.live
-                              rm -rf $unzip_path
-                              rm -rf $target_src
-                              unset AWS_ACCESS_KEY_ID
-                              unset AWS_SECRET_ACCESS_KEY
-                              unset AWS_SESSION_TOKEN
-                              unset TENV_AUTO_INSTALL
+                              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TENV_AUTO_INSTALL
                         environmentVariables: []
                         outputVariables: []
                       timeout: 45m
@@ -712,55 +545,68 @@ pipeline:
             when:
               pipelineStatus: Success
               condition: <+pipeline.variables.aws_lz> == "PROD"
+
   variables:
     - name: branch_name
       type: String
-      description: ""
+      description: IaC repository branch
       required: false
       value: <+input>.default(dev-east-1)
+
     - name: aws_lz
       type: String
-      description: ""
+      description: AWS landing zone
       value: <+input>.default(DEV).selectOneFrom(DEV,NONPROD,PROD)
+
     - name: aws_region
       type: String
-      description: ""
+      description: AWS region
       value: <+input>.default(us-east-1).selectOneFrom(us-east-1,us-west-2)
+
     - name: environment
       type: String
-      description: ""
+      description: Deployment environment
       value: <+input>.default(DEV).selectOneFrom(DEV,QA,RC,XUAT,PROD,DR)
+
     - name: artifactory_url
       type: String
-      description: ""
+      description: Artifactory base URL
       value: https://artifacts.deluxe.com
+
     - name: artifactory_repo
       type: String
-      description: ""
+      description: Artifactory repository
       value: deluxe-raas-dl-local
+
     - name: package_version
       type: String
-      description: ""
+      description: CI package version; use NA for trigger package
       value: <+input>
+
     - name: module_name
       type: String
-      description: ""
-      value: datalake-openinvoice-processor
+      description: CI artifact module name
+      value: batch-processor
+
     - name: framework_name
       type: String
-      description: ""
-      value: OpenInvoice-Processor
+      description: CI framework folder in Artifactory
+      value: RaaS-Redaction-Glue
+
     - name: deploy_action
       type: String
-      description: ""
+      description: Deployment action
       value: <+input>.default(apply).selectOneFrom(apply,destroy)
+
     - name: trigger_package
       type: String
-      description: Recommended to use NA value for manual deployment
+      description: Exact artifact filename when package_version is NA
       value: <+input>.default(NA)
+
     - name: env_delegate
       type: String
-      description: ""
+      description: AWS delegate selector
       value: <+input>.default(dev-iac-delegate).selectOneFrom(dev-iac-delegate,nonprod-iac-delegate,prod-iac-delegate)
+
   delegateSelectors:
     - <+pipeline.variables.env_delegate>
