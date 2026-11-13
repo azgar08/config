@@ -1,224 +1,127 @@
-
-#!/usr/bin/env bash
-set -euo pipefail
-
-export DEBIAN_FRONTEND=noninteractive
-
-# ============================================================
-# Package Version
-# ============================================================
-
-export package_version="<+<+codebase.branch>.replaceAll(\"/\",\"-\")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
-
-MODULE_DIR="glue/batch-ingestion"
-PACKAGE_DIR="$(mktemp -d)"
-export packaged_file="batch-ingestion-${package_version}.zip"
-
-trap 'rm -rf "$PACKAGE_DIR" verify_zip' EXIT
-
-echo "============================================================"
-echo "Starting Batch Ingestion Glue Packaging"
-echo "Package Version: ${package_version}"
-echo "============================================================"
-
-# ============================================================
-# Install Build Utilities
-# ============================================================
-
-echo "Installing build utilities..."
-
-apt-get update -qq
-
-apt-get install -y -qq \
-  zip \
-  unzip \
-  python3-pip
-
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-
-# ============================================================
-# Validate Source
-# ============================================================
-
-echo "Validating source files..."
-
-test -f "$MODULE_DIR/src/spark_job.py"
-test -d "$MODULE_DIR/src/ingestion"
-test -d "$MODULE_DIR/src/ingestion/dataguard"
-
-python --version
-python -m pip --version
-
-# ============================================================
-# Copy Glue Script
-# ============================================================
-
-echo "Copying Glue script..."
-
-cp "$MODULE_DIR/src/spark_job.py" "$PACKAGE_DIR/"
-
-# ============================================================
-# Prepare Library Directory
-# ============================================================
-
-mkdir -p "$PACKAGE_DIR/library"
-
-# ============================================================
-# Install ZIP-Compatible Dependencies
-#
-# IMPORTANT:
-# Do NOT package referencing or rpds-py in ingestion.zip.
-# referencing will be installed by AWS Glue at runtime.
-# ============================================================
-
-echo "Installing ZIP-compatible dependencies..."
-
-python -m pip install \
-  --no-cache-dir \
-  --target "$PACKAGE_DIR/library" \
-  "jsonschema<4.18" \
-  "pg8000==1.31.6"
-
-# ============================================================
-# Verify Dependencies in Build Directory
-# ============================================================
-
-echo "Verifying installed dependencies..."
-
-PYTHONPATH="$PACKAGE_DIR/library" python -c '
-import jsonschema
-import pg8000
-
-from importlib.metadata import version
-
-print("jsonschema:", version("jsonschema"))
-print("pg8000:", version("pg8000"))
-print("Dependency imports: SUCCESS")
-'
-
-# ============================================================
-# Copy Ingestion Source
-# ============================================================
-
-echo "Copying ingestion source..."
-
-cp -R "$MODULE_DIR/src/ingestion" "$PACKAGE_DIR/library/"
-
-# ============================================================
-# Create ingestion.zip
-# ============================================================
-
-echo "Creating ingestion.zip..."
-
-(
-  cd "$PACKAGE_DIR/library"
-
-  zip -1 -q -r "$PACKAGE_DIR/ingestion.zip" . \
-    -x "*/__pycache__/*" \
-       "*.pyc" \
-       "*.pyo"
-)
-
-# ============================================================
-# Validate ingestion.zip
-# ============================================================
-
-echo "Validating ingestion.zip..."
-
-unzip -t "$PACKAGE_DIR/ingestion.zip" >/dev/null
-
-# Confirm ingestion source is present
-unzip -l "$PACKAGE_DIR/ingestion.zip" |
-  grep -q "ingestion/dataguard/validation.py"
-
-# Confirm referencing and rpds native extension are NOT packaged
-if unzip -l "$PACKAGE_DIR/ingestion.zip" |
-   grep -Eq '(^|[[:space:]])(referencing/|rpds/|rpds\.cpython.*\.so)'; then
-  echo "ERROR: referencing or rpds was found in ingestion.zip"
-  exit 1
-fi
-
-echo "ingestion.zip validation: SUCCESS"
-
-# ============================================================
-# Create Deployment Package
-# ============================================================
-
-echo "Creating deployment package..."
-
-mkdir -p "$PACKAGE_DIR/deploy"
-
-cp "$PACKAGE_DIR/spark_job.py" "$PACKAGE_DIR/deploy/"
-cp "$PACKAGE_DIR/ingestion.zip" "$PACKAGE_DIR/deploy/"
-
-(
-  cd "$PACKAGE_DIR/deploy"
-
-  zip -1 -q -r "$OLDPWD/$packaged_file" .
-)
-
-# ============================================================
-# Validate Deployment Package
-# ============================================================
-
-echo "Validating deployment package..."
-
-unzip -t "$packaged_file" >/dev/null
-
-test -s "$packaged_file"
-
-# ============================================================
-# Final Package Listing
-# ============================================================
-
-echo ""
-echo "============================================================"
-echo "DEPLOYMENT PACKAGE CONTENTS"
-echo "============================================================"
-
-unzip -l "$packaged_file"
-
-# ============================================================
-# Inspect ingestion.zip Inside Deployment Package
-# ============================================================
-
-echo ""
-echo "============================================================"
-echo "LIBRARY PACKAGE CONTENTS"
-echo "============================================================"
-
-mkdir -p verify_zip
-
-unzip -q "$packaged_file" -d verify_zip
-
-unzip -l verify_zip/ingestion.zip
-
-# ============================================================
-# Package Size
-# ============================================================
-
-echo ""
-echo "============================================================"
-echo "PACKAGE SIZE"
-echo "============================================================"
-
-ls -lh "$packaged_file"
-
-# ============================================================
-# Harness Output Variables
-# ============================================================
-
-echo "packaged_file $packaged_file" >> /addon/tmp/ArchiveSource.out
-echo "package_version $package_version" >> /addon/tmp/ArchiveSource.out
-
-# ============================================================
-# Completion
-# ============================================================
-
-echo ""
-echo "============================================================"
-echo "Batch Ingestion Glue Package Build Completed Successfully"
-echo "Package: ${packaged_file}"
-echo "Version: ${package_version}"
-echo "============================================================"
+INFO	2026-11-13T05:48:34,885	7548	org.apache.spark.util.ShutdownHookManager	[shutdown-hook-0]	60	Shutdown hook called
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at com.amazonaws.services.glue.SparkProcessLauncherPlugin.invoke(ProcessLauncher.scala:55)
+	at com.amazonaws.services.glue.SparkProcessLauncherPlugin.invoke$(ProcessLauncher.scala:55)
+	at com.amazonaws.services.glue.ProcessLauncher$$anon$1.invoke(ProcessLauncher.scala:193)
+	at com.amazonaws.services.glue.ProcessLauncher.launch(ProcessLauncher.scala:421)
+	at com.amazonaws.services.glue.ProcessLauncher$.main(ProcessLauncher.scala:35)
+	at com.amazonaws.services.glue.ProcessLauncher.main(ProcessLauncher.scala)
+Caused by: org.apache.spark.SparkUserAppException: User application exited with 1
+	at org.apache.spark.deploy.PythonRunner$.main(PythonRunner.scala:112)
+	at org.apache.spark.deploy.PythonRunner.main(PythonRunner.scala)
+	... 10 more
+java.lang.reflect.InvocationTargetException
+INFO	2026-11-13T05:48:34,872	7535	com.amazonaws.services.glue.ProcessLauncher	[main]	60	postprocessing
+ERROR	2026-11-13T05:48:34,870	7533	com.amazonaws.services.glueexceptionanalysis.GlueExceptionAnalysisListener	[main]	9	[Glue Exception Analysis] {"Event":"GlueETLJobExceptionEvent","Timestamp":1794548914640,"Failure Reason":"Traceback (most recent call last):\n  File \"<frozen runpy>\", line 291, in run_path\n  File \"<frozen runpy>\", line 98, in _run_module_code\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/tmp/glue-job-16980602674984051046/spark_job.py\", line 72, in <module>\n    main()\n  File \"/tmp/glue-job-16980602674984051046/spark_job.py\", line 40, in main\n    source=ManifestRef(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 7, in __init__\n  File \"/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/contracts.py\", line 47, in __post_init__\n    validate_payload(self.family, self.definition or type(self).__name__, _wire(self))\n  File \"/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/validation.py\", line 113, in validate_payload\n    error = next(_validator(family, definition).iter_errors(payload), None)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/validation.py\", line 105, in _validator\n    return Draft202012Validator(\n           ^^^^^^^^^^^^^^^^^^^^^\nTypeError: create.<locals>.Validator.__init__() got an unexpected keyword argument 'registry'","Stack Trace":[{"Declaring Class":"_validator","Method Name":"return Draft202012Validator(","File Name":"/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/validation.py","Line Number":105},{"Declaring Class":"validate_payload","Method Name":"error = next(_validator(family, definition).iter_errors(payload), None)","File Name":"/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/validation.py","Line Number":113},{"Declaring Class":"__post_init__","Method Name":"validate_payload(self.family, self.definition or type(self).__name__, _wire(self))","File Name":"/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/contracts.py","Line Number":47},{"Declaring Class":"main","Method Name":"source=ManifestRef(","File Name":"/tmp/glue-job-16980602674984051046/spark_job.py","Line Number":40},{"Declaring Class":"<module>","Method Name":"main()","File Name":"/tmp/glue-job-16980602674984051046/spark_job.py","Line Number":72}],"Last Executed Line number":72,"script":"spark_job.py"}
+ERROR	2026-11-13T05:48:34,871	7534	com.amazonaws.services.glueexceptionanalysis.GlueExceptionAnalysisListener	[main]	9	[Glue Exception Analysis] Last Executed Line number from script spark_job.py: 72
+ERROR	2026-11-13T05:48:34,360	7023	com.amazonaws.services.glue.ProcessLauncher	[main]	76	Error from Python:Traceback (most recent call last):
+  File "<frozen runpy>", line 291, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/tmp/glue-job-16980602674984051046/spark_job.py", line 72, in <module>
+    main()
+  File "/tmp/glue-job-16980602674984051046/spark_job.py", line 40, in main
+    source=ManifestRef(
+           ^^^^^^^^^^^^
+  File "<string>", line 7, in __init__
+  File "/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/contracts.py", line 47, in __post_init__
+    validate_payload(self.family, self.definition or type(self).__name__, _wire(self))
+  File "/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/validation.py", line 113, in validate_payload
+    error = next(_validator(family, definition).iter_errors(payload), None)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/glue-job-16980602674984051046/extra-py-files/ingestion.zip/ingestion/dataguard/validation.py", line 105, in _validator
+    return Draft202012Validator(
+           ^^^^^^^^^^^^^^^^^^^^^
+TypeError: create.<locals>.Validator.__init__() got an unexpected keyword argument 'registry'
+INFO	2026-11-13T05:48:32,919	5582	com.amazonaws.services.glue.SafeLogging	[main]	60	Initializing logging subsystem
+INFO	2026-11-13T05:48:32,409	5072	com.amazonaws.services.gluedi.sensei.autodebugging.AutoDebuggingProxy	[main]	265	initializing AutoDebuggingProxy
+INFO	2026-11-13T05:48:32,043	4706	com.amazonaws.services.glue.utils.EndpointConfig$	[main]	88	Endpoints: {credentials_provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain, glue.endpoint=https://glue.us-east-1.amazonaws.com, lakeformation.endpoint=https://lakeformation.us-east-1.amazonaws.com, jes.endpoint=https://glue-jes-prod.us-east-1.amazonaws.com, region=us-east-1}
+Fri Nov 13 05:48:27 UTC 2026
+Launching ...
+Running autoDebugger shutdown hook.
+INFO	2026-11-13T05:48:26,846	25755	com.amazonaws.services.glue.utils.concurrent.GlueConcurrentAsyncProcessingService	[main]	76	shutdownAsyncProcessing has been completed
+INFO	2026-11-13T05:48:26,846	25755	com.amazonaws.services.glue.utils.concurrent.GlueConcurrentAsyncProcessingService	[main]	50	shutdownAsyncProcessing has been Started
+INFO	2026-11-13T05:48:26,836	25745	com.amazonaws.services.glue.utils.concurrent.PythonModuleTask	[pool-5-thread-1]	39	Setting Up Virtual Env and Application Python Modules has been completed in async mode
+INFO	2026-11-13T05:48:26,681	25590	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute /usr/bin/bash /tmp/glue-job-16980602674984051046/pythonmodules/createvenvzip.sh /tmp/glue_venv /tmp/glue-job-16980602674984051046_glue_venv.zip
+INFO	2026-11-13T05:48:21,402	20311	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute /usr/bin/bash /tmp/glue-job-16980602674984051046/pythonmodules/pythonmoduleinstaller.sh /tmp/glue_venv EMPTY referencing==0.36.2
+INFO	2026-11-13T05:48:18,921	17830	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute /usr/bin/bash /tmp/glue-job-16980602674984051046/pythonmodules/pythonmoduleinstaller.sh /tmp/glue_venv --no-index --no-deps /tmp/glue-job-16980602674984051046/python/ER7jN0-AwsGlueMLLibs/amzn_awsgluemlpythonlibs-1.0-py3-none-any.whl
+INFO	2026-11-13T05:48:18,914	17823	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute unzip /tmp/glue-job-16980602674984051046/python/ER7jN0-AwsGlueMLLibs.py.zip -d /tmp/glue-job-16980602674984051046/python/ER7jN0-AwsGlueMLLibs
+INFO	2026-11-13T05:48:17,856	16765	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute /usr/bin/bash /tmp/glue-job-16980602674984051046/pythonmodules/pythonmoduleinstaller.sh /tmp/glue_venv --no-index --no-deps /tmp/glue-job-16980602674984051046/python/Zh2Mrr-AWSGlueDataplanePython-5.0.1197/amzn_awsgluelibs-5.0.1197-py3-none-any.whl
+INFO	2026-11-13T05:48:17,823	16732	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute unzip /tmp/glue-job-16980602674984051046/python/Zh2Mrr-AWSGlueDataplanePython-5.0.1197.py.zip -d /tmp/glue-job-16980602674984051046/python/Zh2Mrr-AWSGlueDataplanePython-5.0.1197
+INFO	2026-11-13T05:48:15,723	14632	com.amazonaws.services.glue.FileDownloader	[sdk-async-response-3-0]	146	Object downloaded. Details: GetObjectResponse(AcceptRanges=bytes, LastModified=2026-11-12T11:22:28Z, ContentLength=3265, ETag="c54c4098370040f62a729c808e150e54", VersionId=9vqn1uLRZ_mQIGKpzOhRNzZ.UPpdicik, ContentType=application/octet-stream, ServerSideEncryption=aws:kms, Metadata={}, SSEKMSKeyId=*** Sensitive Data Redacted ***)
+INFO	2026-11-13T05:48:15,724	14633	com.amazonaws.services.glue.launch.helpers.FileManager	[main]	129	Script should be downloaded at /tmp/glue-job-16980602674984051046/spark_job.py 
+INFO	2026-11-13T05:48:14,890	13799	com.amazonaws.services.glue.FileDownloader	[main]	139	Download bucket: dlx-r360plus-redaction-ingestion-dev key: scripts/dev/spark_job.py to /tmp/glue-job-16980602674984051046/spark_job.py with usingProxy: false and isProxyDisabled: true
+INFO	2026-11-13T05:48:14,878	13787	com.amazonaws.services.glue.utils.AWSS3Utils$	[main]	34	Encoded S3 URI to s3://dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py
+INFO	2026-11-13T05:48:14,878	13787	com.amazonaws.services.glue.utils.AWSS3Utils$	[main]	29	Encoding S3 URI s3://dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py
+INFO	2026-11-13T05:48:14,589	13498	com.amazonaws.services.glue.FileDownloader	[main]	96	downloading s3://dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py file to destination location: /tmp/glue-job-16980602674984051046/spark_job.py
+INFO	2026-11-13T05:48:14,583	13492	com.amazonaws.services.glue.PrepareLaunch	[main]	228	list of connectors to be added in classpath: List()
+INFO	2026-11-13T05:48:14,298	13207	com.amazonaws.services.glue.launch.helpers.ConnectionsManager	[main]	78	GLUE_CONNECTIVITY: attached connection types: ListBuffer()
+INFO	2026-11-13T05:48:14,207	13116	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-16980602674984051046/amazon
+INFO	2026-11-13T05:48:14,207	13116	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-16980602674984051046/amazon/certs
+INFO	2026-11-13T05:48:14,208	13117	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-16980602674984051046/aws_glue_connectors/selected/native
+INFO	2026-11-13T05:48:14,208	13117	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-16980602674984051046/aws_glue_connectors/marketplace
+INFO	2026-11-13T05:48:14,206	13115	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-16980602674984051046/aws_glue_connectors
+INFO	2026-11-13T05:48:14,207	13116	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-16980602674984051046/aws_glue_connectors/selected
+INFO	2026-11-13T05:48:14,207	13116	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-16980602674984051046/exception_catch
+INFO	2026-11-13T05:48:14,187	13096	com.amazonaws.services.glue.launch.helpers.LoggerPropsManager	[main]	78	setting up the log4j.configurationFile=/tmp/glue-job-16980602674984051046/glue-593026080780782390log4j2.properties
+INFO	2026-11-13T05:48:13,654	12563	com.amazonaws.services.glue.FileDownloader	[main]	96	downloading /tmp/glue-593026080780782390log4j2.properties file to destination location: /tmp/glue-job-16980602674984051046/glue-593026080780782390log4j2.properties
+WARN	2026-11-13T05:48:13,647	12556	com.amazonaws.services.glue.launch.helpers.LoggerPropsManager	[main]	60	Logger setup failed for exception analysis: Cannot invoke "java.net.URL.toURI()" because the return value of "java.lang.Class.getResource(String)" is null
+INFO	2026-11-13T05:48:13,645	12554	com.amazonaws.services.glue.launch.helpers.LoggerPropsManager	[main]	31	setupLoggerProperties...
+INFO	2026-11-13T05:48:13,638	12547	com.amazonaws.services.glue.launch.helpers.SparkPropsManagerHelper	[main]	114	optimizeParallelismConfigs started 
+INFO	2026-11-13T05:48:13,608	12517	com.amazonaws.services.gluedi.sensei.autodebugging.AutoDebuggingProxy	[main]	274	registering spark listeners
+INFO	2026-11-13T05:48:13,522	12431	com.amazonaws.services.gluedi.sensei.autodebugging.AutoDebuggingProxy	[main]	265	initializing AutoDebuggingProxy
+INFO	2026-11-13T05:48:12,721	11630	com.amazonaws.services.glue.utils.AWSClientUtils$	[main]	97	AWSClientUtils: create aws sts client with conf: proxy hostnull, proxy port 0
+INFO	2026-11-13T05:48:12,684	11593	com.amazonaws.services.glue.utils.EndpointConfig$	[main]	88	Endpoints: {credentials_provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain, glue.endpoint=https://glue.us-east-1.amazonaws.com, lakeformation.endpoint=https://lakeformation.us-east-1.amazonaws.com, jes.endpoint=https://glue-jes-prod.us-east-1.amazonaws.com, region=us-east-1}
+INFO	2026-11-13T05:48:12,390	11299	com.amazonaws.services.glue.utils.EndpointConfig$	[main]	34	 STAGE is prod
+INFO	2026-11-13T05:48:12,378	11287	com.amazonaws.services.glue.launch.helpers.SparkPropsManagerHelper	[main]	100	
+proxy {
+  host = null
+  port = -1
+}
+INFO	2026-11-13T05:48:12,334	11243	com.amazonaws.services.glue.launch.helpers.PrepareLaunchProperties	[main]	89	Get job script: spark_job.py.
+INFO	2026-11-13T05:48:12,329	11238	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute python3.11 -m venv --clear /tmp/glue_venv
+INFO	2026-11-13T05:48:12,322	11231	com.amazonaws.services.glue.utils.concurrent.PythonModuleTask	[pool-5-thread-1]	25	Setting Up Virtual Env and Application/Customer Provided Python Modules started in async mode
+INFO	2026-11-13T05:48:12,282	11191	com.amazonaws.services.glue.PrepareLaunch	[main]	184	Launching PythonModuleTask for --additional-python-modules
+INFO	2026-11-13T05:48:11,285	10194	com.amazonaws.services.glue.PrepareLaunch	[main]	149	Using --additional-python-modules for Python dependency management
+1794548890958
+26/11/13 05:48:10 INFO GlueLibsDownloader: Elapsed time: 2679 millis
+26/11/13 05:48:10 INFO GlueLibsDownloader: Elapsed time: 1985 millis
+26/11/13 05:48:06 WARN VersionInfoUtils: The AWS SDK for Java 1.x entered maintenance mode starting July 31, 2024 and will reach end of support on December 31, 2025. For more information, see https://aws.amazon.com/blogs/developer/the-aws-sdk-for-java-1-x-is-in-maintenance-mode-effective-july-31-2024/
+You can print where on the file system the AWS SDK for Java 1.x core runtime is located by setting the AWS_JAVA_V1_PRINT_LOCATION environment variable or aws.java.v1.printLocation system property to 'true'.
+This message can be disabled by setting the AWS_JAVA_V1_DISABLE_DEPRECATION_ANNOUNCEMENT environment variable or aws.java.v1.disableDeprecationAnnouncement system property to 'true'.
+The AWS SDK for Java 1.x is being used here:
+at java.base/java.lang.Thread.getStackTrace(Thread.java:1619)
+at glue.shaded.com.amazonaws.util.VersionInfoUtils.printDeprecationAnnouncement(VersionInfoUtils.java:81)
+at glue.shaded.com.amazonaws.util.VersionInfoUtils.<clinit>(VersionInfoUtils.java:59)
+at glue.shaded.com.amazonaws.internal.EC2ResourceFetcher.<clinit>(EC2ResourceFetcher.java:44)
+at glue.shaded.com.amazonaws.auth.InstanceMetadataServiceCredentialsFetcher.<init>(InstanceMetadataServiceCredentialsFetcher.java:38)
+at glue.shaded.com.amazonaws.auth.InstanceProfileCredentialsProvider.<init>(InstanceProfileCredentialsProvider.java:111)
+at glue.shaded.com.amazonaws.auth.InstanceProfileCredentialsProvider.<init>(InstanceProfileCredentialsProvider.java:91)
+at glue.shaded.com.amazonaws.auth.InstanceProfileCredentialsProvider.<init>(InstanceProfileCredentialsProvider.java:75)
+at glue.shaded.com.amazonaws.auth.InstanceProfileCredentialsProvider.<clinit>(InstanceProfileCredentialsProvider.java:58)
+at glue.shaded.com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper.initializeProvider(EC2ContainerCredentialsProviderWrapper.java:66)
+at glue.shaded.com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper.<init>(EC2ContainerCredentialsProviderWrapper.java:55)
+at glue.shaded.com.amazonaws.auth.DefaultAWSCredentialsProviderChain.<init>(DefaultAWSCredentialsProviderChain.java:60)
+at glue.shaded.com.amazonaws.auth.DefaultAWSCredentialsProviderChain.<clinit>(DefaultAWSCredentialsProviderChain.java:54)
+at glue.shaded.com.amazonaws.services.s3.AmazonS3ClientBuilder.standard(AmazonS3ClientBuilder.java:46)
+at glue.shaded.com.amazonaws.services.s3.AmazonS3Client.builder(AmazonS3Client.java:740)
+at com.amazonaws.services.glue.GlueLibsDownloader$Builder.getS3Client(GlueLibsDownloader.java:351)
+at com.amazonaws.services.glue.GlueLibsDownloader$Builder.build(GlueLibsDownloader.java:343)
+at com.amazonaws.services.glue.GlueBootstrap.downloadUserLibs(GlueBootstrap.java:447)
+at com.amazonaws.services.glue.GlueBootstrap.lambda$setUpGlueAndUserLibs$2(GlueBootstrap.java:172)
+at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+at java.base/java.lang.Thread.run(Thread.java:840)
+26/11/13 05:48:06 INFO GlueBootstrap: Downloading customer supplied extra files...
+26/11/13 05:48:06 INFO GlueBootstrap: Downloading Glue libs...
+26/11/13 05:48:06 INFO GlueBootstrap: Glue Bootstrapping the driver...
+26/11/13 05:48:06 INFO GlueBootstrap: Glue Bootstrapping...
+OpenJDK 64-Bit Server VM Corretto-17.0.20.8.1 (build 17.0.20+8-LTS, mixed mode, sharing)
+openjdk version "17.0.20" 2026-07-21 LTS
+OpenJDK Runtime Environment Corretto-17.0.20.8.1 (build 17.0.20+8-LTS)
+/etc/alternatives/jre/bin/java --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED --add-exports=jdk.naming.dns/com.sun.jndi.dns=java.naming --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.util.regex=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.util.calendar=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED --add-opens=java.base/jdk.internal=ALL-UNNAMED --add-opens=java.base/jdk.internal.ref=ALL-UNNAMED --add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED --add-opens=java.base/jdk.internal.util=ALL-UNNAMED --add-opens=java.base/jdk.internal.util.random=ALL-UNNAMED --add-opens=java.sql/java.sql=ALL-UNNAMED --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED -XX:+IgnoreUnrecognizedVMOptions -Djavax.net.ssl.trustStore=/opt/amazon/certs/InternalAndExternalAndAWSTrustStore.jks -Djavax.net.ssl.trustStoreType=JKS -Djavax.net.ssl.trustStorePassword=amazon -DRDS_ROOT_CERT_PATH=/opt/amazon/certs/rds-combined-ca-bundle.pem -DREDSHIFT_ROOT_CERT_PATH=/opt/amazon/certs/redshift-ssl-ca-cert.pem -DRDS_TRUSTSTORE_URL=file:/opt/amazon/certs/InternalAndExternalAndAWSTrustStore.jks -Dlog4j2.configurationFile=/etc/spark/conf.dist/log4j2.properties -cp /usr/share/aws/aws-glue-shuffle/*:/usr/share/aws/emr-glue-bootstrap/*:/usr/lib/spark/jars/*:/usr/lib/spark/conf:/usr/share/aws/aws-java-sdk-v2/*:/usr/share/aws/*:/usr/share/aws/hmclient/lib/aws-glue-datacatalog-spark-client.jar:/usr/share/aws/hmclient/lib/*:/usr/share/aws/iceberg/lib/*:/usr/share/aws/delta/lib/*:/usr/lib/hudi/*:/usr/share/aws/redshift/jdbc/*:/usr/share/aws/redshift/spark-redshift/lib/*:/usr/share/aws/glue-connectors/lib/*:/usr/share/aws/glue-pii-dependencies/lib/*:/usr/share/aws/datazone-openlineage-spark/lib/*:/usr/lib/hadoop/lib/*::/usr/lib/hadoop-lzo/lib/*:/usr/share/aws/aws-java-sdk/*:/usr/share/aws/emr/emrfs/conf:/usr/share/aws/emr/emrfs/lib/*:/usr/share/aws/emr/emrfs/auxlib/*:/usr/share/aws/emr/ddb/lib/emr-ddb-hadoop.jar:/usr/share/aws/emr/goodies/lib/emr-hadoop-goodies.jar:/usr/share/aws/emr/cloudwatch-sink/lib/*:/usr/share/aws/emr/security/conf:/usr/share/aws/emr/security/lib/*:/usr/lib/hadoop/*:/etc/hadoop/conf:/usr/share/java/Hive-JSON-Serde/* com.amazonaws.services.glue.GlueBootstrap --conf spark.dynamicAllocation.enabled=true --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.minExecutors=1 --conf spark.dynamicAllocation.maxExecutors=1 --conf spark.executor.memory=10g --conf spark.driver.memory=10g --conf spark.network.timeout=600 --batch-table dlx-r360plus-redaction-batch-metadata-dev --region us-east-1  --destination-bucket dlx-r360plus-redaction-ingestion-dev --TEXTRACT_QUOTA_TPS 100 --inventory-bucket dlx-r360plus-redaction-ingestion-dev --internal-lib-urls https://prod-us-east-1-package-distribution-artifacts-bucket.s3.amazonaws.com/003/Glue5.0/aws-glue-dataplane-python/java17/5.0.1197/Zh2Mrr-AWSGlueDataplanePython-5.0.1197.py.zip?[REDACTED],https://prod-us-east-1-package-distribution-artifacts-bucket.s3.amazonaws.com/003/Glue5.0/aws-glue-di-libs/java17/5.0.1197/59Exl7-aws-glue-di-package-5.0.1197.jar?[REDACTED],https://prod-us-east-1-package-distribution-artifacts-bucket.s3.amazonaws.com/003/Glue5.0/AwsGlueMLLibsPython/java17/5.0.696/ER7jN0-AwsGlueMLLibs.py.zip?[REDACTED],https://prod-us-east-1-package-distribution-artifacts-bucket.s3.amazonaws.com/003/Glue5.0/AwsGlueMLLibs/java17/5.0.696/J0AfUF-AwsGlueMLLibs.jar?[REDACTED]  --JOB_ID j_20cbec5ad5d18462bdfdc0d010089e82897d098b33fcd70326c8a75666cee39c --account-id 697179190149  --end_at 2026-11-12T13:42:03Z --development-sse-s3 true --ACCOUNT_ID 697179190149  --manifest-prefix test-1104/ --inventory-checksum b1f88ae210e6f8ab2573b9b25eb1f46b46bb4fb3c955b1fa8a645498e30b28c7 --inventory-key xml-manifest/20261104T123317Z-923bd9bea810/inventory.xml --JOB_NAME dlx-r360plus-batch-ingestion-glue-dev  --development-skip-audit true  --batch-size 100 --inventory-version 9blh0HJhwcD1ybuWNB2WhWrICiuN_Ncf --glue-di-packages-correlation-ids 20261109-174434_,20261109-174434_,6543590708,6543590708 --TEXTRACT_RATE_CONTROL_TABLE dlx-r360plus-redaction-TextractRateControl-dev --IMAGE_TRACKING_TABLE dlx-r360plus-redaction-image-metadata-dev --extra-py-files s3://dlx-r360plus-redaction-ingestion-dev/libs/dev/ingestion.zip  --JOB_RUN_ID jr_3389324809eff5b7e1b371a2b34bc54984efc9fe45d0f8903842b6bc44bd85bb --additional-python-modules referencing==0.36.2 --scriptLocation s3://dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py --tenant-internal glue --start_at 2026-11-12T12:42:03Z
+Fri Nov 13 05:48:00 UTC 202
