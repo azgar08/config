@@ -1,473 +1,393 @@
-"""
-constants.py
-------------
-Configuration constants for the Publishing Glue Job Lambda.
-Environment variables are the source of truth — constants are fallback defaults only.
-
-Only two things are needed:
-  1. Which Glue job to trigger   → DEFAULT_GLUE_JOB_NAME
-  2. How to validate the batchId → BATCH_ID_MAX_LENGTH
-"""
-
-import os
-
-# ─────────────────────────────────────────────
-# Glue Job Config
-# ─────────────────────────────────────────────
-# job_name is ALWAYS read from this env var.
-# Callers cannot override it from the event.
-# ─────────────────────────────────────────────
-
-DEFAULT_GLUE_JOB_NAME = os.environ["GLUE_JOB_NAME"]
-
-# ─────────────────────────────────────────────
-# Batch ID Validation
-# ─────────────────────────────────────────────
-# batchId must:
-#   - not exceed BATCH_ID_MAX_LENGTH characters
-#   - match alphanumeric + hyphens + underscores only (enforced in lambda_function.py)
-# ─────────────────────────────────────────────
-BATCH_ID_MAX_LENGTH = 100
-
-
-
-
-"""
-lambda_function.py
-------------------
-Publishing Glue Job Trigger - Production Lambda.
-
-Accepts only:
-    { "batchId": "publishing_test_10" }
-
-job_name is locked to DEFAULT_GLUE_JOB_NAME env var.
-Callers cannot override it from the event.
-"""
-
-import json
-import logging
-import os
-import re
-import boto3
-from botocore.exceptions import ClientError
-
-from constants import (
-    DEFAULT_GLUE_JOB_NAME,
-    BATCH_ID_MAX_LENGTH,
-)
-
-# ─────────────────────────────────────────────
-# Logger - structured JSON for CloudWatch Insights
-# ─────────────────────────────────────────────
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-
-def log(level: str, message: str, **kwargs):
-    entry = {"level": level, "message": message, **kwargs}
-    getattr(logger, level.lower())(json.dumps(entry))
-
-
-# ─────────────────────────────────────────────
-# Glue client - module level (reused on warm starts)
-# Lambda automatically runs in the correct region
-# ─────────────────────────────────────────────
-glue_client = boto3.client("glue")
-
-
-# ─────────────────────────────────────────────
-# Regex - batchId safe characters only
-# ─────────────────────────────────────────────
-BATCH_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]{1,100}$")
-
-
-# ─────────────────────────────────────────────
-# Validation
-# ─────────────────────────────────────────────
-def validate_batch_id(batch_id: str) -> None:
-    """
-    Validates batchId - 3 rules only:
-      1. Must be a non-empty string
-      2. Must match safe alphanumeric pattern (blocks injection)
-      3. Must not exceed max length
-    """
-    if not batch_id or not isinstance(batch_id, str):
-        raise ValueError("batchId is required and must be a non-empty string.")
-
-    if len(batch_id) > BATCH_ID_MAX_LENGTH:
-        raise ValueError(
-            f"batchId exceeds max length of {BATCH_ID_MAX_LENGTH} characters."
-        )
-
-    if not BATCH_ID_PATTERN.match(batch_id):
-        raise ValueError(
-            f"Invalid batchId format: '{batch_id}'. "
-            "Only alphanumeric characters, hyphens, and underscores are allowed."
-        )
-
-
-def validate_event(event: dict) -> str:
-    """
-    Validates the incoming event and returns the batchId.
-
-    Only accepted event shape:
-        { "batchId": "publishing_test_10" }
-
-    Any extra keys are silently ignored - not passed to Glue.
-    Returns the validated batchId string.
-    """
-    if not isinstance(event, dict):
-        raise ValueError(
-            f"Event must be a JSON object, got: {type(event).__name__}"
-        )
-
-    batch_id = event.get("batchId", "")
-    validate_batch_id(batch_id)
-
-    return batch_id
-
-
-# ─────────────────────────────────────────────
-# Handler
-# ─────────────────────────────────────────────
-def lambda_handler(event: dict, context) -> dict:
-    """
-    Entry point for the Publishing Glue Job Lambda.
-
-    Accepted event:
-        { "batchId": "publishing_test_10" }
-
-    job_name is always read from DEFAULT_GLUE_JOB_NAME env var.
-    Callers cannot override it.
-    """
-    request_id = getattr(context, "aws_request_id", "local") if context else "local"
-    log("info", "Lambda invoked", request_id=request_id)
-
-    # ── 1. Validate ────────────────────────────────────────────────────
-    try:
-        batch_id = validate_event(event)
-    except ValueError as e:
-        log("error", "Validation failed", error=str(e))
-        return {
-            "statusCode": 400,
-            "body": json.dumps({"error": "Validation error", "detail": str(e)})
-        }
-
-    job_name = DEFAULT_GLUE_JOB_NAME   # ← always from env var, never from caller
-    log("info", "Validation passed", job_name=job_name, batch_id=batch_id)
-
-    # ── 2. Start Glue job ──────────────────────────────────────────────
-    # No Timeout / MaxCapacity override - Glue job config defines those
-    # --batch_id and DynamoDB table env vars are passed as Glue job arguments
-    log("info", "Starting Glue job", job_name=job_name, batch_id=batch_id)
-
-    try:
-        response = glue_client.start_job_run(
-            JobName=job_name,
-            Arguments={
-                "--batch_id":                   batch_id,
-                "--PUBLISH_BATCH_TABLE":        os.environ["PUBLISH_BATCH_TABLE"],
-                "--PUBLISH_IMAGE_TABLE":        os.environ["PUBLISH_IMAGE_TABLE"],
-                "--PUBLISH_BATCH_STATUS":       os.environ["PUBLISH_BATCH_STATUS"],
-                "--PUBLISH_BATCH_STATUS_INDEX": os.environ["PUBLISH_BATCH_STATUS_INDEX"]
-            }
-        )
-
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_msg  = e.response["Error"]["Message"]
-        log("error", "Glue job start failed",
-            error_code=error_code, detail=error_msg, batch_id=batch_id)
-
-        status_map = {
-            "EntityNotFoundException":               404,
-            "InvalidInputException":                 400,
-            "ConcurrentRunsExceededException":       429,
-            "ResourceNumberLimitExceededException":  429,
-        }
-        return {
-            "statusCode": status_map.get(error_code, 500),
-            "body": json.dumps({
-                "error":      error_code,
-                "detail":     error_msg,
-                "batch_id":   batch_id,
-                "request_id": request_id
-            })
-        }
-
-    # ← catches anything that is not a ClientError
-    # e.g. network timeout, boto3 config error, unexpected SDK behaviour
-    except Exception as e:
-        log("error", "Unexpected error starting Glue job",
-            error=str(e), batch_id=batch_id, request_id=request_id)
-        return {
-            "statusCode": 500,
-            "body": json.dumps({
-                "error":      "UnexpectedError",
-                "detail":     str(e),
-                "batch_id":   batch_id,
-                "request_id": request_id
-            })
-        }
-
-    job_run_id = response["JobRunId"]
-    log("info", "Glue job started successfully",
-        job_name=job_name, job_run_id=job_run_id, batch_id=batch_id)
-
-    # ── 3. Return ──────────────────────────────────────────────────────
-    return {
-        "statusCode": 200,
-        "body": json.dumps({
-            "message":    "Glue job started successfully",
-            "job_name":   job_name,
-            "job_run_id": job_run_id,
-            "batch_id":   batch_id,
-            "request_id": request_id
-        })
-    }
-
-"""
-test_lambda.py
---------------
-Unit tests for the Publishing Glue Job Lambda.
-Covers: success, batchId validation, Glue errors, and unexpected errors.
-"""
-
-import json
-import unittest
-from unittest.mock import patch, MagicMock
-from botocore.exceptions import ClientError
-import sys
-import os
-
-sys.path.insert(
-    0,
-    os.path.join(os.path.dirname(__file__), "../../src/files")
-)
-
-from lambda_function import lambda_handler
-
-
-# ─────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────
-def make_context(request_id="test-request-id"):
-    ctx = MagicMock()
-    ctx.aws_request_id = request_id
-    return ctx
-
-
-def make_client_error(code: str, message: str = "Glue error"):
-    return ClientError(
-        {"Error": {"Code": code, "Message": message}},
-        "StartJobRun"
-    )
-
-
-# ─────────────────────────────────────────────
-# Test Suite
-# ─────────────────────────────────────────────
-@patch("lambda_function.glue_client")
-class TestLambdaHandler(unittest.TestCase):
-
-    # ── Success ───────────────────────────────────────────────────────
-
-    def test_success(self, mock_glue):
-        """Valid batchId triggers Glue job and returns 200."""
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr_123"}
-
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-
-        self.assertEqual(result["statusCode"], 200)
-        body = json.loads(result["body"])
-        self.assertEqual(body["job_run_id"], "jr_123")
-        self.assertEqual(body["batch_id"], "publishing_test_10")
-        mock_glue.start_job_run.assert_called_once()
-
-    def test_glue_receives_only_batch_id_argument(self, mock_glue):
-        """Glue must receive exactly --batch_id and nothing else."""
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr_456"}
-
-        lambda_handler({"batchId": "publishing_test_10"}, make_context())
-
-        call_kwargs = mock_glue.start_job_run.call_args.kwargs
-        self.assertEqual(
-            call_kwargs["Arguments"],
-            {"--batch_id": "publishing_test_10"}
-        )
-
-    def test_job_name_not_overridable_from_event(self, mock_glue):
-        """Caller cannot override job_name — must always come from env var."""
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr_789"}
-
-        lambda_handler(
-            {"batchId": "publishing_test_10", "job_name": "malicious-job"},
-            make_context()
-        )
-
-        call_kwargs = mock_glue.start_job_run.call_args.kwargs
-        self.assertNotEqual(call_kwargs.get("JobName"), "malicious-job")
-
-    def test_context_none_does_not_crash(self, mock_glue):
-        """Lambda must handle context=None gracefully (local testing)."""
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr_000"}
-
-        result = lambda_handler({"batchId": "publishing_local_1"}, None)
-        self.assertEqual(result["statusCode"], 200)
-
-    def test_extra_event_keys_are_ignored(self, mock_glue):
-        """Extra keys in event must be silently ignored, not passed to Glue."""
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr_111"}
-
-        result = lambda_handler(
-            {
-                "batchId":       "publishing_test_10",
-                "total_records": 45000000,           # old field — ignored
-                "arguments":     {"--env": "prod"}   # removed field — ignored
-            },
-            make_context()
-        )
-
-        self.assertEqual(result["statusCode"], 200)
-        call_kwargs = mock_glue.start_job_run.call_args.kwargs
-        self.assertEqual(
-            call_kwargs["Arguments"],
-            {"--batch_id": "publishing_test_10"}
-        )
-
-    def test_success_response_shape(self, mock_glue):
-        """Success response must contain all expected fields."""
-        mock_glue.start_job_run.return_value = {"JobRunId": "jr_222"}
-
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-        body = json.loads(result["body"])
-
-        self.assertIn("message",    body)
-        self.assertIn("job_name",   body)
-        self.assertIn("job_run_id", body)
-        self.assertIn("batch_id",   body)
-        self.assertIn("request_id", body)
-
-
-    # ── batchId Validation ────────────────────────────────────────────
-
-    def test_missing_batch_id(self, mock_glue):
-        """Missing batchId must return 400."""
-        result = lambda_handler({}, make_context())
-        self.assertEqual(result["statusCode"], 400)
-        self.assertIn("batchId", json.loads(result["body"])["detail"])
-
-    def test_empty_batch_id(self, mock_glue):
-        """Empty string batchId must return 400."""
-        result = lambda_handler({"batchId": ""}, make_context())
-        self.assertEqual(result["statusCode"], 400)
-
-    def test_batch_id_special_characters(self, mock_glue):
-        """batchId with special characters must return 400."""
-        result = lambda_handler(
-            {"batchId": "publishing_test; DROP TABLE"},
-            make_context()
-        )
-        self.assertEqual(result["statusCode"], 400)
-
-    def test_batch_id_too_long(self, mock_glue):
-        """batchId exceeding 100 characters must return 400."""
-        long_id = "a" * 101
-        result = lambda_handler({"batchId": long_id}, make_context())
-        self.assertEqual(result["statusCode"], 400)
-
-    def test_event_not_a_dict(self, mock_glue):
-        """Non-dict event must return 400."""
-        result = lambda_handler("not-a-dict", make_context())
-        self.assertEqual(result["statusCode"], 400)
-
-    def test_batch_id_not_a_string(self, mock_glue):
-        """batchId as integer must return 400."""
-        result = lambda_handler({"batchId": 12345}, make_context())
-        self.assertEqual(result["statusCode"], 400)
-
-    def test_validation_does_not_call_glue(self, mock_glue):
-        """Glue must never be called when validation fails."""
-        lambda_handler({"batchId": ""}, make_context())
-        mock_glue.start_job_run.assert_not_called()
-
-
-    # ── Glue ClientError scenarios ────────────────────────────────────
-
-    def test_glue_job_not_found(self, mock_glue):
-        """EntityNotFoundException must return 404."""
-        mock_glue.start_job_run.side_effect = make_client_error(
-            "EntityNotFoundException", "Job not found"
-        )
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-        self.assertEqual(result["statusCode"], 404)
-
-    def test_glue_invalid_input(self, mock_glue):
-        """InvalidInputException must return 400."""
-        mock_glue.start_job_run.side_effect = make_client_error(
-            "InvalidInputException", "Bad argument"
-        )
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-        self.assertEqual(result["statusCode"], 400)
-
-    def test_glue_concurrent_runs_exceeded(self, mock_glue):
-        """ConcurrentRunsExceededException must return 429."""
-        mock_glue.start_job_run.side_effect = make_client_error(
-            "ConcurrentRunsExceededException"
-        )
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-        self.assertEqual(result["statusCode"], 429)
-
-    def test_glue_resource_limit_exceeded(self, mock_glue):
-        """ResourceNumberLimitExceededException must return 429."""
-        mock_glue.start_job_run.side_effect = make_client_error(
-            "ResourceNumberLimitExceededException"
-        )
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-        self.assertEqual(result["statusCode"], 429)
-
-    def test_glue_unknown_error_returns_500(self, mock_glue):
-        """Any unmapped Glue ClientError must return 500."""
-        mock_glue.start_job_run.side_effect = make_client_error(
-            "InternalServiceException", "Glue internal error"
-        )
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-        self.assertEqual(result["statusCode"], 500)
-
-    def test_error_response_contains_batch_id(self, mock_glue):
-        """Error response body must always include batch_id for traceability."""
-        mock_glue.start_job_run.side_effect = make_client_error(
-            "EntityNotFoundException"
-        )
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-        body = json.loads(result["body"])
-        self.assertEqual(body["batch_id"], "publishing_test_10")
-
-
-    # ── Unexpected / generic errors ───────────────────────────────────
-
-    def test_unexpected_exception_returns_500(self, mock_glue):
-        """Non-ClientError exceptions must be caught and return 500."""
-        mock_glue.start_job_run.side_effect = Exception("Unexpected SDK failure")
-
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-
-        self.assertEqual(result["statusCode"], 500)
-        body = json.loads(result["body"])
-        self.assertEqual(body["error"], "UnexpectedError")
-        self.assertIn("Unexpected SDK failure", body["detail"])
-
-    def test_unexpected_exception_contains_batch_id(self, mock_glue):
-        """Unexpected error response must still include batch_id for traceability."""
-        mock_glue.start_job_run.side_effect = Exception("Network timeout")
-
-        result = lambda_handler({"batchId": "publishing_test_10"}, make_context())
-
-        body = json.loads(result["body"])
-        self.assertEqual(body["batch_id"], "publishing_test_10")
-
-
-if __name__ == "__main__":
-    unittest.main()
+Executing the following command(s):
+set -e
+set +x
+if [ -x "$(command -v git)" ]; then
+  git config --global --add safe.directory '*' || true 
+fi
+set -e
+set +x
 
+if [ -x "$(command -v git)" ]; then
+  git config --global --add safe.directory '*' || true
+fi
 
+apt-get update
+apt-get install -y zip unzip
+apt-get clean
+
+if [ ! -d lambda/batch-publishing/tests ]; then
+  echo "Tests directory not found, creating empty JUnit report and exiting."
+
+  cat > junitresult.xml &lt;&lt;EOF
+&lt;testsuites>
+  &lt;testsuite name="placeholder" tests="0" failures="0" errors="0"/>
+&lt;/testsuites>
+EOF
+
+  exit 0
+fi
+
+cd lambda/batch-publishing/tests
+
+echo "Checking for setup-env.sh..."
+
+if [ -f setup-env.sh ]; then
+  . ./setup-env.sh setupjava
+else
+  echo "setup-env.sh not found, skipping..."
+fi
+
+echo "Installing test dependencies..."
+
+pip install \
+  pytest \
+  boto3 \
+  jsonschema \
+  botocore
+
+if [ -f ../../../requirements.txt ]; then
+  echo "Using repository requirements.txt"
+  pip install -r ../../../requirements.txt
+elif [ -f ../requirements.txt ]; then
+  echo "Using batch-publishing requirements.txt"
+  pip install -r ../requirements.txt
+else
+  echo "requirements.txt not found, skipping..."
+fi
+
+pip list
+
+echo "Running unit tests..."
+
+pytest --ignore=bdd --junitxml=junitresult.xml
+
+set +e
+
+if [ -d bdd ]; then
+  echo "Running BDD tests..."
+  bdd_test_output=$(pytest bdd --junitxml=junitresults-bdd.xml)
+  bdd_test_exitcd=$?
+else
+  echo "BDD directory not found, reusing unit test results."
+  cp junitresult.xml junitresults-bdd.xml
+  bdd_test_exitcd=0
+fi
+Hit:1 http://deb.debian.org/debian trixie InRelease
+
+Get:2 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
+
+Get:3 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
+
+Get:4 http://deb.debian.org/debian trixie/main amd64 Packages [9678 kB]
+
+Get:5 http://deb.debian.org/debian trixie-updates/main amd64 Packages [1108 B]
+
+Get:6 http://deb.debian.org/debian-security trixie-security/main amd64 Packages [302 kB]
+
+Fetched 10.1 MB in 1s (13.2 MB/s)
+
+Reading package lists...
+
+Reading package lists...
+
+Building dependency tree...
+
+Reading state information...
+
+unzip is already the newest version (6.0-29+deb13u1).
+
+The following NEW packages will be installed:
+
+  zip
+
+0 upgraded, 1 newly installed, 0 to remove and 7 not upgraded.
+
+Need to get 235 kB of archives.
+
+After this operation, 642 kB of additional disk space will be used.
+
+Get:1 http://deb.debian.org/debian trixie/main amd64 zip amd64 3.0-15+deb13u1 [235 kB]
+
+debconf: unable to initialize frontend: Dialog
+
+debconf: (TERM is not set, so the dialog frontend is not usable.)
+
+debconf: falling back to frontend: Readline
+
+debconf: unable to initialize frontend: Readline
+
+debconf: (This frontend requires a controlling tty.)
+
+debconf: falling back to frontend: Teletype
+
+debconf: unable to initialize frontend: Teletype
+
+debconf: (This frontend requires a controlling tty.)
+
+debconf: falling back to frontend: Noninteractive
+
+Fetched 235 kB in 0s (6945 kB/s)
+
+Selecting previously unselected package zip.
+
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 26756 files and directories currently installed.)
+
+Preparing to unpack .../zip_3.0-15+deb13u1_amd64.deb ...
+
+Unpacking zip (3.0-15+deb13u1) ...
+
+Setting up zip (3.0-15+deb13u1) ...
+
+Checking for setup-env.sh...
+
+setup-env.sh not found, skipping...
+
+Installing test dependencies...
+
+Collecting pytest
+
+  Downloading pytest-9.2.0-py3-none-any.whl.metadata (7.9 kB)
+
+Collecting boto3
+
+  Downloading boto3-1.44.2-py3-none-any.whl.metadata (6.6 kB)
+
+Collecting jsonschema
+
+  Downloading jsonschema-4.26.0-py3-none-any.whl.metadata (7.6 kB)
+
+Collecting botocore
+
+  Downloading botocore-1.44.2-py3-none-any.whl.metadata (5.6 kB)
+
+Collecting iniconfig>=2 (from pytest)
+
+  Downloading iniconfig-2.3.1-py3-none-any.whl.metadata (2.8 kB)
+
+Collecting packaging>=24 (from pytest)
+
+  Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+
+Collecting pluggy&lt;2,>=1.6 (from pytest)
+
+  Downloading pluggy-1.7.0-py3-none-any.whl.metadata (5.0 kB)
+
+Collecting pygments>=2.15 (from pytest)
+
+  Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+
+Collecting jmespath&lt;2.0.0,>=0.7.1 (from boto3)
+
+  Downloading jmespath-1.1.0-py3-none-any.whl.metadata (7.6 kB)
+
+Collecting s3transfer&lt;0.20.0,>=0.19.0 (from boto3)
+
+  Downloading s3transfer-0.19.3-py3-none-any.whl.metadata (1.7 kB)
+
+Collecting attrs>=22.2.0 (from jsonschema)
+
+  Downloading attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)
+
+Collecting jsonschema-specifications>=2023.03.6 (from jsonschema)
+
+  Downloading jsonschema_specifications-2025.9.1-py3-none-any.whl.metadata (2.9 kB)
+
+Collecting referencing>=0.28.4 (from jsonschema)
+
+  Downloading referencing-0.37.0-py3-none-any.whl.metadata (2.8 kB)
+
+Collecting rpds-py>=0.25.0 (from jsonschema)
+
+  Downloading rpds_py-2026.9.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.1 kB)
+
+Collecting python-dateutil&lt;3.0.0,>=2.1 (from botocore)
+
+  Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+
+Collecting urllib3!=2.2.0,&lt;3,>=1.25.4 (from botocore)
+
+  Downloading urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+
+Collecting six>=1.5 (from python-dateutil&lt;3.0.0,>=2.1->botocore)
+
+  Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+
+Collecting typing-extensions>=4.4.0 (from referencing>=0.28.4->jsonschema)
+
+  Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+
+Downloading pytest-9.2.0-py3-none-any.whl (411 kB)
+
+Downloading boto3-1.44.2-py3-none-any.whl (140 kB)
+
+Downloading jsonschema-4.26.0-py3-none-any.whl (90 kB)
+
+Downloading botocore-1.44.2-py3-none-any.whl (16.3 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.3/16.3 MB 297.1 MB/s eta 0:00:00
+
+Downloading attrs-26.1.0-py3-none-any.whl (67 kB)
+
+Downloading iniconfig-2.3.1-py3-none-any.whl (7.6 kB)
+
+Downloading jmespath-1.1.0-py3-none-any.whl (20 kB)
+
+Downloading jsonschema_specifications-2025.9.1-py3-none-any.whl (18 kB)
+
+Downloading packaging-26.3-py3-none-any.whl (129 kB)
+
+Downloading pluggy-1.7.0-py3-none-any.whl (27 kB)
+
+Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 76.4 MB/s eta 0:00:00
+
+Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+
+Downloading referencing-0.37.0-py3-none-any.whl (26 kB)
+
+Downloading rpds_py-2026.9.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (371 kB)
+
+Downloading s3transfer-0.19.3-py3-none-any.whl (90 kB)
+
+Downloading urllib3-2.8.0-py3-none-any.whl (135 kB)
+
+Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+
+Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+
+Installing collected packages: urllib3, typing-extensions, six, rpds-py, pygments, pluggy, packaging, jmespath, iniconfig, attrs, referencing, python-dateutil, pytest, jsonschema-specifications, botocore, s3transfer, jsonschema, boto3
+
+Successfully installed attrs-26.1.0 boto3-1.44.2 botocore-1.44.2 iniconfig-2.3.1 jmespath-1.1.0 jsonschema-4.26.0 jsonschema-specifications-2025.9.1 packaging-26.3 pluggy-1.7.0 pygments-2.21.0 pytest-9.2.0 python-dateutil-2.9.0.post0 referencing-0.37.0 rpds-py-2026.9.1 s3transfer-0.19.3 six-1.17.0 typing-extensions-4.16.0 urllib3-2.8.0
+
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+
+
+
+[notice] A new release of pip is available: 25.0.1 -> 26.3
+
+[notice] To update, run: pip install --upgrade pip
+
+requirements.txt not found, skipping...
+
+Package                   Version
+
+------------------------- -----------
+
+attrs                     26.1.0
+
+boto3                     1.44.2
+
+botocore                  1.44.2
+
+iniconfig                 2.3.1
+
+jmespath                  1.1.0
+
+jsonschema                4.26.0
+
+jsonschema-specifications 2025.9.1
+
+packaging                 26.3
+
+pip                       25.0.1
+
+pluggy                    1.7.0
+
+Pygments                  2.21.0
+
+pytest                    9.2.0
+
+python-dateutil           2.9.0.post0
+
+referencing               0.37.0
+
+rpds-py                   2026.9.1
+
+s3transfer                0.19.3
+
+six                       1.17.0
+
+typing_extensions         4.16.0
+
+urllib3                   2.8.0
+
+Running unit tests...
+
+============================= test session starts ==============================
+
+platform linux -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0
+
+rootdir: /harness
+
+configfile: pyproject.toml
+
+collected 0 items / 1 error
+
+
+
+==================================== ERRORS ====================================
+
+________ ERROR collecting lambda/batch-publishing/tests/test_lambda.py _________
+
+ImportError while importing test module '/harness/lambda/batch-publishing/tests/test_lambda.py'.
+
+Hint: make sure your test modules/packages have valid Python names.
+
+Traceback:
+
+/usr/local/lib/python3.12/importlib/__init__.py:90: in import_module
+
+    return _bootstrap._gcd_import(name[level:], package, level)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_lambda.py:20: in &lt;module>
+
+    from lambda_function import lambda_handler
+
+E   ModuleNotFoundError: No module named 'lambda_function'
+
+-- generated xml file: /harness/lambda/batch-publishing/tests/junitresult.xml --
+
+=========================== short test summary info ============================
+
+ERROR test_lambda.py
+
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+
+=============================== 1 error in 0.16s ===============================
+
+Number of cases parsed in each file: map[lambda/batch-publishing/tests/junitresult.xml:1 tests/fixtures/inventory.xml:0]
+parsed 1 test cases
+
+================= Harness Test Report =================
+✗ 1 test(s) failed.
++-----------+----------------------+---------+
+| Failed    | total                |      1  |
++-----------+----------------------+---------+
+| TOTAL     | all tests            |      1  |
++-----------+----------------------+---------+
+
+Successfully collected test reports in 279.795105ms time
