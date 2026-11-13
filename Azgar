@@ -1,1 +1,32 @@
-[s3.us-east-1.amazonaws.com] putObject: AccessDenied: User: arn:aws:sts::697179190149:assumed-role/AWSReservedSSO_PowerUser_35ce7654af7c3980/t469203@deluxe.com is not authorized to perform: s3:PutObject on resource: "arn:aws:s3:::dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py" with an explicit deny in a resource-based policy
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "DenyIncorrectEncryptionHeader",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::dlx-r360plus-redaction-ingestion-dev/*",
+            "Condition": {
+                "StringNotEquals": {
+                    "s3:x-amz-server-side-encryption": [
+                        "aws:kms",
+                        "AES256"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "DenyUnEncryptedObjectUploads",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::dlx-r360plus-redaction-ingestion-dev/*",
+            "Condition": {
+                "Null": {
+                    "s3:x-amz-server-side-encryption": "true"
+                }
+            }
+        }
+    ]
+}
