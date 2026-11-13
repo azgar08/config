@@ -1,490 +1,253 @@
-pipeline:
-  name: Build Redaction Batch Ingestion Glue
-  identifier: Build_Redaction_Batch_Ingestion_Glue
-  projectIdentifier: RaaS
-  orgIdentifier: Payments
-  tags: {}
-  properties:
-    ci:
-      codebase:
-        connectorRef: BitbucketCloud
-        repoName: raas-pciredactionbackend
-        build: <+input>
-  stages:
-    - stage:
-        name: Build
-        identifier: Build
-        type: CI
-        spec:
-          cloneCodebase: true
-          infrastructure:
-            type: KubernetesDirect
-            spec:
-              connectorRef: account.prodk8sdelegate4xlarge
-              namespace: harness-delegate-ng
-              automountServiceAccountToken: true
-              nodeSelector: {}
-              os: Linux
-          execution:
-            steps:
-              - step:
-                  type: Run
-                  name: Pytest Unit Test
-                  identifier: pytest_unit_test
-                  spec:
-                    connectorRef: dockerhub
-                    image: python:3.11
-                    shell: Bash
-                    command: |-
-                      apt-get update && \
-                        apt-get install -y zip unzip && \
-                        apt-get clean
-
-                      python -m pip install --upgrade pip
-
-                      python -m pip install --no-cache-dir \
-                        pytest \
-                        boto3 \
-                        botocore \
-                        moto \
-                        jsonschema \
-                        python-dateutil \
-                        urllib3
-
-                      cd glue/<+pipeline.variables.moduleName>
-
-                      export PYTHONPATH="$PWD/src"
-
-                      if grep -R -nE '\.(delete_item|describe_time_to_live|update_time_to_live)[[:space:]]*\(' src/ingestion; then
-                        echo "Batch Ingestion must not delete DynamoDB records or administer DynamoDB TTL."
-                        exit 1
-                      fi
-
-                      echo "Running Batch Ingestion unit tests from tests/unit"
-
-                      set +e
-
-                      pytest tests/unit \
-                        -ra \
-                        --tb=short \
-                        --junitxml=<+pipeline.variables.TestResultsFileName>
-
-                      unit_test_exitcd=$?
-
-                      set -e
-
-                      echo "Pytest exit code: $unit_test_exitcd"
-
-                      python -c 'import sys, xml.etree.ElementTree as ET; root=ET.parse(sys.argv[1]).getroot(); suites=[root] if root.tag=="testsuite" else root.findall(".//testsuite"); keys=("tests","failures","errors","skipped"); print("Pytest JUnit summary: " + ", ".join(f"{k}={sum(int(s.get(k,0)) for s in suites)}" for k in keys))' "<+pipeline.variables.TestResultsFileName>"
-
-                      VortexFilename="result.$(date +'%Y.%m.%d-%H.%M.%S').xml"
-
-                      cp "<+pipeline.variables.TestResultsFileName>" "$VortexFilename"
-
-                      codebase_branch="<+<+codebase.branch>.substring(0,3)>"
-
-                      if [ "$codebase_branch" = "dev" ] || [ "$codebase_branch" = "rel" ]; then
-                        echo "--------------------"
-                        echo "Sending Test Results to TAAS"
-                        echo "--------------------"
-
-                        curl -F "exectype=Pre-Deploy" \
-                             -F "environment=QA" \
-                             -F "file=@$VortexFilename" \
-                             -k \
-                             "<+variable.TestAutomationAnalyticsSystemBaseUrl>/ingestspecflow"
-
-                        echo "--------------------"
-                      fi
-
-                      ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
-
-                      echo "Adding '<+pipeline.variables.TestResultsFileName>' to archive: $ArchiveName"
-
-                      zip "$ArchiveName" "<+pipeline.variables.TestResultsFileName>"
-
-                      echo "Uploading archive to Report Portal"
-
-                      # curl -F "file=@$ArchiveName" \
-                      #      -H "Authorization: Bearer <+secrets.getValue(\"account.ReportPortalHarnessAccessToken\")>" \
-                      #      "<+variable.ReportPortalImportUrl>"
-
-                      echo "Skipping Zephyr upload (credentials not configured)"
-                      zephyr_exit_code=0
-
-                      if [ $unit_test_exitcd -ne 0 ]; then
-                        exit $unit_test_exitcd
-                      fi
-
-                      if [ $zephyr_exit_code -ne 0 ]; then
-                        exit $zephyr_exit_code
-                      fi
-
-                      echo "Batch Ingestion tests completed successfully."
-                    reports:
-                      type: JUnit
-                      spec:
-                        paths:
-                          - "**/*.xml"
-                  when:
-                    stageStatus: Success
-              - parallel:
-                  - stepGroup:
-                      name: CxOne Scan RaaS
-                      identifier: CxOne_Scan_RaaS
-                      template:
-                        templateRef: CxOne_Scan_RaaS
-                        versionLabel: 1.1.0
-                        templateInputs:
-                          variables:
-                            - name: SkipScan
-                              type: String
-                              default: "Yes"
-                              value: "Yes"
-                            - name: MemoryLimit
-                              type: String
-                              default: 1G
-                              value: 1G
-                            - name: ProjectName
-                              type: String
-                              value: deluxe-development/RaaS/<+<+pipeline.properties.ci.codebase.repoName>.toLowerCase()>
-                            - name: EnforcePolicy
-                              type: String
-                              value: "Yes"
-                            - name: SkipScaScan
-                              type: String
-                              value: "Yes"
-                  - stepGroup:
-                      name: SonarQube Scan
-                      identifier: SonarQube_Scan
-                      steps:
-                        - step:
-                            type: Run
-                            name: SonarQube Run
-                            identifier: SonarQube_Run
-                            spec:
-                              connectorRef: dockerhub
-                              image: sonarsource/sonar-scanner-cli
-                              shell: Sh
-                              command: sonar-scanner -Dsonar.projectKey="RaaS-<+pipeline.properties.ci.codebase.repoName>" -Dsonar.host.url="https://sonarqube.deluxe.com" -Dsonar.login="<+secrets.getValue("account.sonarqube_access_token")>" -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info -Dsonar.branch.name=<+codebase.branch>
-                              resources:
-                                limits:
-                                  memory: 4096Mi
-                        - step:
-                            name: SonarQube Step
-                            identifier: SonarQube_Step
-                            template:
-                              templateRef: account.SonarQube_Step
-                              versionLabel: 1.0.0
-                              gitBranch: develop
-                              templateInputs:
-                                type: Sonarqube
-                                spec:
-                                  tool:
-                                    project_key: RaaS-<+pipeline.properties.ci.codebase.repoName>
-              - step:
-                  type: Run
-                  name: ArchiveSource
-                  identifier: ArchiveSource
-                  spec:
-                    connectorRef: artifactorydeluxecom
-                    image: python:3.11
-                    shell: Bash
-                    command: |-
-                      #!/usr/bin/env bash
-                      set -euo pipefail
-
-                      export DEBIAN_FRONTEND=noninteractive
-
-                      # Package version
-                      export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
-
-                      MODULE_DIR="glue/batch-ingestion"
-                      PACKAGE_DIR="$(mktemp -d)"
-                      export packaged_file="batch-ingestion-${package_version}.zip"
-
-                      trap 'rm -rf "$PACKAGE_DIR"' EXIT
-
-                      echo "Installing ZIP utilities..."
-                      apt-get update -qq
-                      apt-get install -y -qq zip unzip python3-pip build-essential
-                      apt-get clean
-                      rm -rf /var/lib/apt/lists/*
-
-                      echo "Validating source..."
-                      test -f "$MODULE_DIR/src/spark_job.py"
-                      test -d "$MODULE_DIR/src/ingestion"
-
-                      python --version
-                      pip --version
-
-                      echo "Copying Glue script..."
-                      cp "$MODULE_DIR/src/spark_job.py" "$PACKAGE_DIR/"
-
-                      echo "Preparing library package..."
-                      mkdir -p "$PACKAGE_DIR/library"
-
-                      echo "Upgrading pip..."
-                      python -m pip install --upgrade pip
-
-                      echo "Installing Glue runtime dependencies..."
-
-                      pip install \
-                        --no-cache-dir \
-                        "jsonschema<4.18" \
-                        pg8000 \
-                        -t "$PACKAGE_DIR/library"
-
-                      echo "Installed packages:"
-                      pip show jsonschema || true
-                      pip show pg8000 || true
-
-                      echo "Copying ingestion package..."
-
-                      cp -R "$MODULE_DIR/src/ingestion" "$PACKAGE_DIR/library/"
-
-                      echo "Creating ingestion.zip..."
-
-                      (
-                        cd "$PACKAGE_DIR/library"
-
-                        zip -1 -q -r "$PACKAGE_DIR/ingestion.zip" . \
-                          -x "*/__pycache__/*" \
-                             "*.pyc" \
-                             "*.pyo"
-                      )
-
-                      echo "Verifying packaged dependencies..."
-
-                      unzip -l "$PACKAGE_DIR/ingestion.zip" | grep jsonschema || true
-                      unzip -l "$PACKAGE_DIR/ingestion.zip" | grep pg8000 || true
-
-                      echo "Creating deployment package..."
-
-                      mkdir -p "$PACKAGE_DIR/deploy"
-
-                      cp "$PACKAGE_DIR/spark_job.py" "$PACKAGE_DIR/deploy/"
-                      cp "$PACKAGE_DIR/ingestion.zip" "$PACKAGE_DIR/deploy/"
-
-                      (
-                        cd "$PACKAGE_DIR/deploy"
-
-                        zip -1 -q -r "$OLDPWD/$packaged_file" .
-                      )
-
-                      echo "Validating package..."
-
-                      unzip -t "$packaged_file" >/dev/null
-                      test -s "$packaged_file"
-
-                      echo ""
-                      echo "===== DEPLOYMENT PACKAGE ====="
-                      unzip -l "$packaged_file"
-
-                      echo ""
-                      echo "===== LIBRARY PACKAGE ====="
-
-                      mkdir -p verify_zip
-
-                      unzip -q "$packaged_file" -d verify_zip
-
-                      unzip -l verify_zip/ingestion.zip
-
-                      rm -rf verify_zip
-
-                      ls -lh "$packaged_file"
-
-                      echo "packaged_file $packaged_file" >> /addon/tmp/ArchiveSource.out
-                      echo "package_version $package_version" >> /addon/tmp/ArchiveSource.out
-
-                      echo "Build package completed successfully."
-                    outputVariables:
-                      - name: packaged_file
-                      - name: package_version
-                  when:
-                    stageStatus: Success
-              - step:
-                  type: ArtifactoryUpload
-                  name: PushArtifactory
-                  identifier: PushArtifactory
-                  spec:
-                    connectorRef: account.artifactoryconnector
-                    target: <+pipeline.variables.artifactoryRepo>/<+pipeline.variables.frameworkName>/
-                    sourcePath: ./<+steps.ArchiveSource.output.outputVariables.packaged_file>
-                  when:
-                    stageStatus: Success
-                  failureStrategies: []
-          serviceDependencies:
-            - identifier: dind
-              name: dind
-              type: Service
-              spec:
-                connectorRef: artifactorydeluxecom
-                image: docker:dind
-                privileged: true
-          sharedPaths:
-            - /var/run
-            - /shared/scan_results
-  variables:
-    - name: bb_repoName
-      type: String
-      description: ""
-      value: raas-pciredactionbackend
-    - name: packageVersion
-      type: String
-      description: ""
-      value: "0.2"
-    - name: moduleName
-      type: String
-      description: ""
-      value: batch-ingestion
-    - name: frameworkName
-      type: String
-      description: ""
-      value: RaaS-Redaction-Glue
-    - name: artifactoryRepo
-      type: String
-      description: ""
-      value: deluxe-raas-dl-local
-    - name: ProjectName
-      type: String
-      value: BatchIngestion
-    - name: TestResultsFileName
-      type: String
-      value: junitresults-bdd.xml
-
-locals {
-  account_vars     = read_terragrunt_config(find_in_parent_folders("account.hcl"))
-  region_vars      = read_terragrunt_config(find_in_parent_folders("region.hcl"))
-  environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
-  aws_account_id   = lower(local.account_vars.locals.aws_account_id)
-
-  aws_region   = local.region_vars.locals.aws_region
-  environment  = local.environment_vars.locals.environment
-  project_name = local.environment_vars.locals.project_suffix
-  account_name = local.account_vars.locals.account_name
-
-  source_base_url = "git::ssh://git@bitbucket.org/deluxe-development/infrastructure.raas.terraform.stacks.git//glue-pci"
-}
-
-dependency "common-tags" {
-  config_path = find_in_parent_folders("common-tags")
-}
-
-dependency "kms-pci-redaction" {
-  config_path = find_in_parent_folders("pci-redaction/kms/kms-pci-redaction")
-}
-
-dependency "iam-batch-ingestion-glue" {
-  config_path = find_in_parent_folders("pci-redaction/iam/iam-batch-ingestion-glue")
-}
-
-dependency "s3-pci-ingestion" {
-  config_path = find_in_parent_folders("pci-redaction/s3/s3-pci-ingestion")
-}
-
-dependency "redaction-batch-metadata" {
-  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-batch-metadata")
-}
-
-dependency "redaction-image-metadata" {
-  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-image-metadata")
-}
-
-dependency "redaction-textractratecontrol" {
-  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-textractratecontrol")
-}
-
-dependency "redaction-ui-batch-action-history" {
-  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-ui-batch-action-history")
-}
-
-dependency "redaction-ui-image-action-history" {
-  config_path = find_in_parent_folders("pci-redaction/dynamodb/redaction-ui-image-action-history")
-}
-
-inputs = {
-  # Common configuration
-  aws_region   = local.aws_region
-  environment  = local.environment
-  project_name = local.project_name
-  account_name = local.account_name
-
-  # Glue job configuration
-  glue_job_name     = "dlx-r360plus-batch-ingestion-glue-${local.environment}"
-  glue_job_role_arn = dependency.iam-batch-ingestion-glue.outputs.iam_role_arn
-  kms_key_arn       = dependency.kms-pci-redaction.outputs.kms_arn
-
-  glue_version             = "5.0"
-  python_version           = "3"
-  glue_job_execution_class = "STANDARD"
-
-  worker_type       = "G.1X"
-  number_of_workers = 2
-
-  glue_job_max_concur = 100
-  timeout             = 360
-  max_retries         = 0
-
-  # S3 bucket
-  s3_glue_bucket = dependency.s3-pci-ingestion.outputs.s3_bucket_id
-
-  # Entry script artifact
-  glue_script_artifact_name = "redaction-entry"
-
-  # Python library artifacts
-  glue_library_artifact_names = [
-    "redaction-library"
-  ]
-
-  glue_artifacts = [
-    {
-      name        = "redaction-entry"
-      type        = "script"
-      source_path = "/tmp/src/glue/spark_job.py"
-      s3_key      = "scripts/${local.environment}/spark_job.py"
-    },
-    {
-      name        = "redaction-library"
-      type        = "library"
-      source_path = "/tmp/src/glue/ingestion.zip"
-      s3_key      = "libs/${local.environment}/ingestion.zip"
-    }
-  ]
-
-  # Additional external libraries, if required
-  glue_extra_libs = []
-
-  # Glue configuration
-  glue_security_cfg   = ""
-  glue_job_connection = []
-
-  # Application-specific job arguments
-  default_arguments = {
-    "--region"                      = local.aws_region
-    "--inventory-bucket"            = dependency.s3-pci-ingestion.outputs.s3_bucket_id
-    "--destination-bucket"          = dependency.s3-pci-ingestion.outputs.s3_bucket_id
-    "--IMAGE_TRACKING_TABLE"        = dependency.redaction-image-metadata.outputs.dynamodb_table_name
-    "--batch-table"                 = dependency.redaction-batch-metadata.outputs.dynamodb_table_name
-    "--TEXTRACT_RATE_CONTROL_TABLE" = dependency.redaction-textractratecontrol.outputs.dynamodb_table_name
-    "--TEXTRACT_QUOTA_TPS"          = "100"
-    "--inventory-key"               = "xml-manifest/20261104T123317Z-923bd9bea810/inventory.xml"
-    "--inventory-version"           = "9blh0HJhwcD1ybuWNB2WhWrICiuN_Ncf"
-    "--inventory-checksum"          = "b1f88ae210e6f8ab2573b9b25eb1f46b46bb4fb3c955b1fa8a645498e30b28c7"
-    "--manifest-prefix"             = "test-1104/"
-    "--batch-size"                  = "100" 
-    "--ACCOUNT_ID"                  = local.aws_account_id 
-    "--account-id"                  = local.aws_account_id 
-    "--start_at"                    = "2030-01-01T10:00:00Z"
-    "--end_at"                      = "2030-01-01T10:00:00Z"
-    "--development-sse-s3"          = "true" 
-    "--development-skip-audit"      = "true"
-  }
-
-  tags = merge(
-    dependency.common-tags.outputs.common_tags,
-    {
-      TerraformPath = path_relative_to_include()
-    }
-  )
-}
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+# ============================================================
+# Package Version
+# ============================================================
+
+export package_version="<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
+
+MODULE_DIR="glue/batch-ingestion"
+PACKAGE_DIR="$(mktemp -d)"
+export packaged_file="batch-ingestion-${package_version}.zip"
+
+trap 'rm -rf "$PACKAGE_DIR" verify_zip' EXIT
+
+echo "============================================================"
+echo "Starting Batch Ingestion Glue Packaging"
+echo "Package Version: ${package_version}"
+echo "============================================================"
+
+# ============================================================
+# Install Build Utilities
+# ============================================================
+
+echo "Installing ZIP utilities and build dependencies..."
+
+apt-get update -qq
+
+apt-get install -y -qq \
+  zip \
+  unzip \
+  python3-pip \
+  build-essential
+
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Validate Source
+# ============================================================
+
+echo "Validating source files..."
+
+test -f "$MODULE_DIR/src/spark_job.py"
+test -d "$MODULE_DIR/src/ingestion"
+test -d "$MODULE_DIR/src/ingestion/dataguard"
+
+python --version
+python -m pip --version
+
+# ============================================================
+# Copy Glue Script
+# ============================================================
+
+echo "Copying Glue script..."
+
+cp "$MODULE_DIR/src/spark_job.py" "$PACKAGE_DIR/"
+
+# ============================================================
+# Prepare Library Directory
+# ============================================================
+
+echo "Preparing library package..."
+
+mkdir -p "$PACKAGE_DIR/library"
+
+# ============================================================
+# Upgrade pip
+# ============================================================
+
+echo "Upgrading pip..."
+
+python -m pip install --upgrade pip
+
+# ============================================================
+# Install Glue Runtime Dependencies
+# ============================================================
+
+echo "Installing Glue runtime dependencies..."
+
+python -m pip install \
+  --no-cache-dir \
+  --target "$PACKAGE_DIR/library" \
+  "jsonschema<4.18" \
+  "referencing==0.36.2" \
+  pg8000
+
+# ============================================================
+# Verify Python Dependencies
+# ============================================================
+
+echo "Verifying installed Python dependencies..."
+
+PYTHONPATH="$PACKAGE_DIR/library" python -c '
+from importlib.metadata import version
+
+import jsonschema
+import referencing
+import pg8000
+from referencing import Registry, Resource
+
+print("jsonschema:", version("jsonschema"))
+print("referencing:", version("referencing"))
+print("pg8000:", version("pg8000"))
+
+print("Registry import: SUCCESS")
+print("Resource import: SUCCESS")
+print("All runtime dependencies imported successfully.")
+'
+
+# ============================================================
+# Copy Ingestion Source
+# ============================================================
+
+echo "Copying ingestion package..."
+
+cp -R "$MODULE_DIR/src/ingestion" "$PACKAGE_DIR/library/"
+
+# ============================================================
+# Create ingestion.zip
+# ============================================================
+
+echo "Creating ingestion.zip..."
+
+(
+  cd "$PACKAGE_DIR/library"
+
+  zip -1 -q -r "$PACKAGE_DIR/ingestion.zip" . \
+    -x "*/__pycache__/*" \
+       "*.pyc" \
+       "*.pyo"
+)
+
+# ============================================================
+# Verify ingestion.zip Contents
+# ============================================================
+
+echo "Verifying packaged dependencies..."
+
+unzip -l "$PACKAGE_DIR/ingestion.zip" | grep -E \
+  'jsonschema/|referencing/|rpds/|attrs/|pg8000/'
+
+echo "Verifying ingestion source..."
+
+unzip -l "$PACKAGE_DIR/ingestion.zip" | grep \
+  'ingestion/dataguard/'
+
+# ============================================================
+# Verify ZIP Import
+# ============================================================
+
+echo "Verifying imports from final ingestion.zip..."
+
+PYTHONPATH="$PACKAGE_DIR/ingestion.zip" python -c '
+import jsonschema
+import referencing
+import pg8000
+
+from referencing import Registry, Resource
+
+from ingestion.dataguard import (
+    InvalidContract,
+    ManifestRef,
+    SourceConflict,
+)
+
+print("jsonschema import: SUCCESS")
+print("referencing import: SUCCESS")
+print("pg8000 import: SUCCESS")
+print("ingestion.dataguard import: SUCCESS")
+'
+
+# ============================================================
+# Create Deployment Package
+# ============================================================
+
+echo "Creating deployment package..."
+
+mkdir -p "$PACKAGE_DIR/deploy"
+
+cp "$PACKAGE_DIR/spark_job.py" "$PACKAGE_DIR/deploy/"
+cp "$PACKAGE_DIR/ingestion.zip" "$PACKAGE_DIR/deploy/"
+
+(
+  cd "$PACKAGE_DIR/deploy"
+
+  zip -1 -q -r "$OLDPWD/$packaged_file" .
+)
+
+# ============================================================
+# Validate Deployment Package
+# ============================================================
+
+echo "Validating deployment package..."
+
+unzip -t "$packaged_file" >/dev/null
+
+test -s "$packaged_file"
+
+# ============================================================
+# Final Package Listing
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "DEPLOYMENT PACKAGE"
+echo "============================================================"
+
+unzip -l "$packaged_file"
+
+echo ""
+echo "============================================================"
+echo "LIBRARY PACKAGE"
+echo "============================================================"
+
+mkdir -p verify_zip
+
+unzip -q "$packaged_file" -d verify_zip
+
+unzip -l verify_zip/ingestion.zip
+
+# ============================================================
+# Package Size
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "PACKAGE SIZE"
+echo "============================================================"
+
+ls -lh "$packaged_file"
+
+# ============================================================
+# Harness Output Variables
+# ============================================================
+
+echo "packaged_file $packaged_file" >> /addon/tmp/ArchiveSource.out
+echo "package_version $package_version" >> /addon/tmp/ArchiveSource.out
+
+# ============================================================
+# Completion
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "Batch Ingestion Glue Package Build Completed Successfully"
+echo "Package: ${packaged_file}"
+echo "Version: ${package_version}"
+echo "============================================================"
+```
