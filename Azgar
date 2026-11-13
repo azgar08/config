@@ -1,83 +1,35 @@
-glue/batch-ingestion/requirements.txt
 
-
-
-@@ -0,0 +1,6 @@
-boto3>=1.35.99,<1.40
-pg8000>=1.31,<2
-jsonschema[format]>=4.23,<4.26
-referencing>=0.35,<0.37
-rpds-py>=0.7.1
-typing_extensions>=4.4.0
-glue/batch-ingestion/setup.py
-
-
-
-@@ -0,0 +1,21 @@
-from pathlib import Path
-
-from setuptools import find_packages, setup
-
-
-ROOT = Path(__file__).resolve().parent
-REQUIREMENTS = [
-    line.strip()
-    for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
-    if line.strip() and not line.lstrip().startswith("#")
-]
-
-setup(
-    name="raas-batch-ingestion",
-    version="0.1.0",
-    description="RaaS batch ingestion Glue application",
-    package_dir={"": "src"},
-    packages=find_packages(where="src"),
-    package_data={"ingestion.schemas": ["*.schema.json", "*.yaml", "fixtures/*.json"]},
-    install_requires=REQUIREMENTS,
-)
-
-
-
-requ
-2 / 2
-
-
-
-
-
-
-
-
-Executing the following command(s):
-set -e
-set +x
-if [ -x "$(command -v git)" ]; then
-  git config --global --add safe.directory '*' || true 
-fi
 #!/usr/bin/env bash
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Package version
-export package_version="PCI-project-flow.0.2.12"
+# ============================================================
+# Configuration
+# ============================================================
 
 MODULE_DIR="glue/batch-ingestion"
-PACKAGE_DIR="$(mktemp -d)"
-export packaged_file="batch-ingestion-${package_version}.zip"
+PACKAGE_VERSION="PCI-project-flow.0.2.12"
+PACKAGED_FILE="batch-ingestion-${PACKAGE_VERSION}.zip"
 
-trap 'rm -rf "$PACKAGE_DIR" verify_zip' EXIT
+WORK_DIR="$(mktemp -d)"
+OUTPUT_DIR="$PWD"
+
+LIBRARY_DIR="$WORK_DIR/library"
+VERIFY_DIR="$WORK_DIR/verify"
+WHEEL_DIR="$WORK_DIR/wheels"
+DEPLOY_DIR="$WORK_DIR/deploy"
+
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 echo "============================================================"
 echo "Starting Batch Ingestion Glue Packaging"
-echo "Package Version: ${package_version}"
+echo "Package Version: ${PACKAGE_VERSION}"
 echo "============================================================"
 
 # ============================================================
 # Install Build Utilities
 # ============================================================
-
-echo "Installing build utilities..."
 
 apt-get update -qq
 
@@ -89,86 +41,99 @@ apt-get install -y -qq \
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
+python --version
+python -m pip --version
+
 # ============================================================
 # Validate Source
 # ============================================================
 
 echo "Validating source files..."
 
+test -f "$MODULE_DIR/setup.py"
+test -f "$MODULE_DIR/requirements.txt"
 test -f "$MODULE_DIR/src/spark_job.py"
 test -d "$MODULE_DIR/src/ingestion"
 test -d "$MODULE_DIR/src/ingestion/dataguard"
-
-python --version
-python -m pip --version
+test -d "$MODULE_DIR/src/ingestion/schemas"
 
 # ============================================================
-# Copy Glue Script
+# Prepare Directories
 # ============================================================
 
-echo "Copying Glue script..."
-
-cp "$MODULE_DIR/src/spark_job.py" "$PACKAGE_DIR/"
-
-# ============================================================
-# Prepare Library Directory
-# ============================================================
-
-mkdir -p "$PACKAGE_DIR/library"
+mkdir -p \
+  "$LIBRARY_DIR" \
+  "$VERIFY_DIR" \
+  "$WHEEL_DIR" \
+  "$DEPLOY_DIR"
 
 # ============================================================
-# Build the component wheel and its Linux dependencies
+# Build Package and Dependencies Using setup.py
 # ============================================================
 
-echo "Building the ingestion wheelhouse from setup.py..."
+echo "Building package and dependency wheels..."
 
 python -m pip wheel \
   --no-cache-dir \
-  --wheel-dir "$PACKAGE_DIR/wheels" \
+  --wheel-dir "$WHEEL_DIR" \
   "$MODULE_DIR"
 
-mkdir -p "$PACKAGE_DIR/verify"
+# ============================================================
+# Install into Verification Directory
+# ============================================================
+
+echo "Installing package into verification directory..."
+
 python -m pip install \
   --no-cache-dir \
   --no-index \
-  --find-links "$PACKAGE_DIR/wheels" \
-  --target "$PACKAGE_DIR/verify" \
+  --find-links "$WHEEL_DIR" \
+  --target "$VERIFY_DIR" \
   raas-batch-ingestion==0.1.0
 
-PYTHONPATH="$PACKAGE_DIR/verify" python -c '
+# ============================================================
+# Validate Dependencies and Application
+# ============================================================
+
+echo "Validating Python imports..."
+
+PYTHONPATH="$VERIFY_DIR" python - <<'PY'
 import jsonschema
 import pg8000
 import referencing
 import rpds.rpds
+
 from importlib.resources import files
+from jsonschema import Draft202012Validator
 from ingestion.dataguard.validation import validate_payload
 
-assert files("ingestion.schemas").joinpath("common.schema.json").is_file()
+schema = files("ingestion.schemas").joinpath("common.schema.json")
+
+assert schema.is_file(), "Schema resource is missing"
+
 print("jsonschema:", jsonschema.__version__)
-print("referencing:", referencing.__version__ if hasattr(referencing, "__version__") else "available")
+print("pg8000:", pg8000.__version__)
+print("referencing: available")
 print("rpds native extension: available")
-print("ingestion package and schema resources: available")
-'
+print("Draft202012Validator: available")
+print("Ingestion application: available")
+print("Schema resources: available")
+
+print("Dependency validation: SUCCESS")
+PY
 
 # ============================================================
-# Create source-only ingestion.zip
+# Create Source-Only ingestion.zip
 # ============================================================
 
-echo "Copying ingestion source..."
+echo "Creating source-only ingestion.zip..."
 
-mkdir -p "$PACKAGE_DIR/library"
-cp -R "$MODULE_DIR/src/ingestion" "$PACKAGE_DIR/library/"
-
-# ============================================================
-# Create ingestion.zip
-# ============================================================
-
-echo "Creating ingestion.zip..."
+cp -R "$MODULE_DIR/src/ingestion" "$LIBRARY_DIR/"
 
 (
-  cd "$PACKAGE_DIR/library"
+  cd "$LIBRARY_DIR"
 
-  zip -1 -q -r "$PACKAGE_DIR/ingestion.zip" . \
+  zip -1 -q -r "$WORK_DIR/ingestion.zip" . \
     -x "*/__pycache__/*" \
        "*.pyc" \
        "*.pyo"
@@ -180,37 +145,32 @@ echo "Creating ingestion.zip..."
 
 echo "Validating ingestion.zip..."
 
-unzip -t "$PACKAGE_DIR/ingestion.zip" >/dev/null
+unzip -t "$WORK_DIR/ingestion.zip" >/dev/null
 
-# Confirm ingestion source is present
-unzip -l "$PACKAGE_DIR/ingestion.zip" |
+unzip -l "$WORK_DIR/ingestion.zip" |
   grep -q "ingestion/dataguard/validation.py"
 
-# Compiled dependencies must be installed from wheels, not ZIP imports.
-if unzip -l "$PACKAGE_DIR/ingestion.zip" |
+if unzip -l "$WORK_DIR/ingestion.zip" |
    grep -Eq '(^|[[:space:]])(jsonschema/|referencing/|rpds/)'; then
-  echo "ERROR: runtime dependencies were found in source-only ingestion.zip"
+  echo "ERROR: Dependencies found inside source-only ingestion.zip"
   exit 1
 fi
 
 echo "ingestion.zip validation: SUCCESS"
 
 # ============================================================
-# Create Deployment Package
+# Prepare Deployment Package
 # ============================================================
 
-echo "Creating deployment package..."
+echo "Preparing deployment package..."
 
-mkdir -p "$PACKAGE_DIR/deploy"
-
-cp "$PACKAGE_DIR/spark_job.py" "$PACKAGE_DIR/deploy/"
-cp "$PACKAGE_DIR/ingestion.zip" "$PACKAGE_DIR/deploy/"
-cp -R "$PACKAGE_DIR/wheels" "$PACKAGE_DIR/deploy/"
+cp "$MODULE_DIR/src/spark_job.py" "$DEPLOY_DIR/"
+cp "$WORK_DIR/ingestion.zip" "$DEPLOY_DIR/"
 
 (
-  cd "$PACKAGE_DIR/deploy"
+  cd "$DEPLOY_DIR"
 
-  zip -1 -q -r "$OLDPWD/$packaged_file" .
+  zip -1 -q -r "$OUTPUT_DIR/$PACKAGED_FILE" .
 )
 
 # ============================================================
@@ -219,63 +179,48 @@ cp -R "$PACKAGE_DIR/wheels" "$PACKAGE_DIR/deploy/"
 
 echo "Validating deployment package..."
 
-unzip -t "$packaged_file" >/dev/null
+unzip -t "$OUTPUT_DIR/$PACKAGED_FILE" >/dev/null
 
-test -s "$packaged_file"
+test -s "$OUTPUT_DIR/$PACKAGED_FILE"
 
 # ============================================================
-# Final Package Listing
+# Package Contents
 # ============================================================
 
-echo ""
 echo "============================================================"
 echo "DEPLOYMENT PACKAGE CONTENTS"
 echo "============================================================"
 
-unzip -l "$packaged_file"
+unzip -l "$OUTPUT_DIR/$PACKAGED_FILE"
 
-# ============================================================
-# Inspect ingestion.zip Inside Deployment Package
-# ============================================================
-
-echo ""
-echo "============================================================"
-echo "LIBRARY PACKAGE CONTENTS"
-echo "============================================================"
-
-mkdir -p verify_zip
-
-unzip -q "$packaged_file" -d verify_zip
-
-unzip -l verify_zip/ingestion.zip
-
-# ============================================================
-# Package Size
-# ============================================================
-
-echo ""
 echo "============================================================"
 echo "PACKAGE SIZE"
 echo "============================================================"
 
-ls -lh "$packaged_file"
+ls -lh "$OUTPUT_DIR/$PACKAGED_FILE"
 
 # ============================================================
 # Harness Output Variables
 # ============================================================
 
-echo "packaged_file $packaged_file" >> /addon/tmp/ArchiveSource.out
-echo "package_version $package_version" >> /addon/tmp/ArchiveSource.out
+mkdir -p /addon/tmp
+
+echo "packaged_file $PACKAGED_FILE" >> /addon/tmp/ArchiveSource.out
+echo "package_version $PACKAGE_VERSION" >> /addon/tmp/ArchiveSource.out
 
 # ============================================================
 # Completion
 # ============================================================
 
-echo ""
 echo "============================================================"
 echo "Batch Ingestion Glue Package Build Completed Successfully"
-echo "Package: ${packaged_file}"
-echo "Version: ${package_version}"
+echo "Package: $PACKAGED_FILE"
+echo "Version: $PACKAGE_VERSION"
 echo "============================================================"
-echo "packaged_file $packaged_file" >> /addon/tmp/ArchiveSource.out
-echo "package_version $package_version" >> /addon/tmp/ArchiveSource.out
+
+
+
+
+
+--additional-python-modules
+jsonschema[format]==4.25.1,pg8000==1.31.6,referencing==0.36.2
