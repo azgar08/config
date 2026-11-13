@@ -1,16 +1,14 @@
-Executing the following command(s):
-set -e
-set +x
-if [ -x "$(command -v git)" ]; then
-  git config --global --add safe.directory '*' || true 
-fi
+
 #!/usr/bin/env bash
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Package version
-export package_version="PCI-project-flow.0.2.9"
+# ============================================================
+# Package Version
+# ============================================================
+
+export package_version="<+<+codebase.branch>.replaceAll(\"/\",\"-\")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>"
 
 MODULE_DIR="glue/batch-ingestion"
 PACKAGE_DIR="$(mktemp -d)"
@@ -27,15 +25,14 @@ echo "============================================================"
 # Install Build Utilities
 # ============================================================
 
-echo "Installing ZIP utilities and build dependencies..."
+echo "Installing build utilities..."
 
 apt-get update -qq
 
 apt-get install -y -qq \
   zip \
   unzip \
-  python3-pip \
-  build-essential
+  python3-pip
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*
@@ -65,59 +62,46 @@ cp "$MODULE_DIR/src/spark_job.py" "$PACKAGE_DIR/"
 # Prepare Library Directory
 # ============================================================
 
-echo "Preparing library package..."
-
 mkdir -p "$PACKAGE_DIR/library"
 
 # ============================================================
-# Upgrade pip
+# Install ZIP-Compatible Dependencies
+#
+# IMPORTANT:
+# Do NOT package referencing or rpds-py in ingestion.zip.
+# referencing will be installed by AWS Glue at runtime.
 # ============================================================
 
-echo "Upgrading pip..."
-
-python -m pip install --upgrade pip
-
-# ============================================================
-# Install Glue Runtime Dependencies
-# ============================================================
-
-echo "Installing Glue runtime dependencies..."
+echo "Installing ZIP-compatible dependencies..."
 
 python -m pip install \
   --no-cache-dir \
   --target "$PACKAGE_DIR/library" \
-  "jsonschema&lt;4.18" \
-  "referencing==0.36.2" \
-  pg8000
+  "jsonschema<4.18" \
+  "pg8000==1.31.6"
 
 # ============================================================
-# Verify Python Dependencies
+# Verify Dependencies in Build Directory
 # ============================================================
 
-echo "Verifying installed Python dependencies..."
+echo "Verifying installed dependencies..."
 
 PYTHONPATH="$PACKAGE_DIR/library" python -c '
+import jsonschema
+import pg8000
+
 from importlib.metadata import version
 
-import jsonschema
-import referencing
-import pg8000
-from referencing import Registry, Resource
-
 print("jsonschema:", version("jsonschema"))
-print("referencing:", version("referencing"))
 print("pg8000:", version("pg8000"))
-
-print("Registry import: SUCCESS")
-print("Resource import: SUCCESS")
-print("All runtime dependencies imported successfully.")
+print("Dependency imports: SUCCESS")
 '
 
 # ============================================================
 # Copy Ingestion Source
 # ============================================================
 
-echo "Copying ingestion package..."
+echo "Copying ingestion source..."
 
 cp -R "$MODULE_DIR/src/ingestion" "$PACKAGE_DIR/library/"
 
@@ -137,43 +121,25 @@ echo "Creating ingestion.zip..."
 )
 
 # ============================================================
-# Verify ingestion.zip Contents
+# Validate ingestion.zip
 # ============================================================
 
-echo "Verifying packaged dependencies..."
+echo "Validating ingestion.zip..."
 
-unzip -l "$PACKAGE_DIR/ingestion.zip" | grep -E \
-  'jsonschema/|referencing/|rpds/|attrs/|pg8000/'
+unzip -t "$PACKAGE_DIR/ingestion.zip" >/dev/null
 
-echo "Verifying ingestion source..."
+# Confirm ingestion source is present
+unzip -l "$PACKAGE_DIR/ingestion.zip" |
+  grep -q "ingestion/dataguard/validation.py"
 
-unzip -l "$PACKAGE_DIR/ingestion.zip" | grep \
-  'ingestion/dataguard/'
+# Confirm referencing and rpds native extension are NOT packaged
+if unzip -l "$PACKAGE_DIR/ingestion.zip" |
+   grep -Eq '(^|[[:space:]])(referencing/|rpds/|rpds\.cpython.*\.so)'; then
+  echo "ERROR: referencing or rpds was found in ingestion.zip"
+  exit 1
+fi
 
-# ============================================================
-# Verify ZIP Import
-# ============================================================
-
-echo "Verifying imports from final ingestion.zip..."
-
-PYTHONPATH="$PACKAGE_DIR/ingestion.zip" python -c '
-import jsonschema
-import referencing
-import pg8000
-
-from referencing import Registry, Resource
-
-from ingestion.dataguard import (
-    InvalidContract,
-    ManifestRef,
-    SourceConflict,
-)
-
-print("jsonschema import: SUCCESS")
-print("referencing import: SUCCESS")
-print("pg8000 import: SUCCESS")
-print("ingestion.dataguard import: SUCCESS")
-'
+echo "ingestion.zip validation: SUCCESS"
 
 # ============================================================
 # Create Deployment Package
@@ -208,14 +174,18 @@ test -s "$packaged_file"
 
 echo ""
 echo "============================================================"
-echo "DEPLOYMENT PACKAGE"
+echo "DEPLOYMENT PACKAGE CONTENTS"
 echo "============================================================"
 
 unzip -l "$packaged_file"
 
+# ============================================================
+# Inspect ingestion.zip Inside Deployment Package
+# ============================================================
+
 echo ""
 echo "============================================================"
-echo "LIBRARY PACKAGE"
+echo "LIBRARY PACKAGE CONTENTS"
 echo "============================================================"
 
 mkdir -p verify_zip
@@ -252,501 +222,3 @@ echo "Batch Ingestion Glue Package Build Completed Successfully"
 echo "Package: ${packaged_file}"
 echo "Version: ${package_version}"
 echo "============================================================"
-echo "packaged_file $packaged_file" >> /addon/tmp/ArchiveSource.out
-echo "package_version $package_version" >> /addon/tmp/ArchiveSource.out
-============================================================
-
-Starting Batch Ingestion Glue Packaging
-
-Package Version: PCI-project-flow.0.2.9
-
-============================================================
-
-Installing ZIP utilities and build dependencies...
-
-Selecting previously unselected package build-essential.
-
-(Reading database ... 
-(Reading database ... 5%
-(Reading database ... 10%
-(Reading database ... 15%
-(Reading database ... 20%
-(Reading database ... 25%
-(Reading database ... 30%
-(Reading database ... 35%
-(Reading database ... 40%
-(Reading database ... 45%
-(Reading database ... 50%
-(Reading database ... 55%
-(Reading database ... 60%
-(Reading database ... 65%
-(Reading database ... 70%
-(Reading database ... 75%
-(Reading database ... 80%
-(Reading database ... 85%
-(Reading database ... 90%
-(Reading database ... 95%
-(Reading database ... 100%
-(Reading database ... 26756 files and directories currently installed.)
-
-Preparing to unpack .../00-build-essential_12.12_amd64.deb ...
-
-Unpacking build-essential (12.12) ...
-
-Selecting previously unselected package javascript-common.
-
-Preparing to unpack .../01-javascript-common_12+nmu1_all.deb ...
-
-Unpacking javascript-common (12+nmu1) ...
-
-Selecting previously unselected package libjs-jquery.
-
-Preparing to unpack .../02-libjs-jquery_3.6.1+dfsg+~3.5.14-1_all.deb ...
-
-Unpacking libjs-jquery (3.6.1+dfsg+~3.5.14-1) ...
-
-Selecting previously unselected package libjs-underscore.
-
-Preparing to unpack .../03-libjs-underscore_1.13.4~dfsg+~1.11.4-3_all.deb ...
-
-Unpacking libjs-underscore (1.13.4~dfsg+~1.11.4-3) ...
-
-Selecting previously unselected package libjs-sphinxdoc.
-
-Preparing to unpack .../04-libjs-sphinxdoc_8.1.3-5_all.deb ...
-
-Unpacking libjs-sphinxdoc (8.1.3-5) ...
-
-Selecting previously unselected package libpython3.13:amd64.
-
-Preparing to unpack .../05-libpython3.13_3.13.5-2+deb13u5_amd64.deb ...
-
-Unpacking libpython3.13:amd64 (3.13.5-2+deb13u5) ...
-
-Selecting previously unselected package libpython3.13-dev:amd64.
-
-Preparing to unpack .../06-libpython3.13-dev_3.13.5-2+deb13u5_amd64.deb ...
-
-Unpacking libpython3.13-dev:amd64 (3.13.5-2+deb13u5) ...
-
-Selecting previously unselected package libpython3-dev:amd64.
-
-Preparing to unpack .../07-libpython3-dev_3.13.5-1_amd64.deb ...
-
-Unpacking libpython3-dev:amd64 (3.13.5-1) ...
-
-Selecting previously unselected package python3.13-dev.
-
-Preparing to unpack .../08-python3.13-dev_3.13.5-2+deb13u5_amd64.deb ...
-
-Unpacking python3.13-dev (3.13.5-2+deb13u5) ...
-
-Selecting previously unselected package python3-dev.
-
-Preparing to unpack .../09-python3-dev_3.13.5-1_amd64.deb ...
-
-Unpacking python3-dev (3.13.5-1) ...
-
-Selecting previously unselected package python3-wheel.
-
-Preparing to unpack .../10-python3-wheel_0.46.1-2_all.deb ...
-
-Unpacking python3-wheel (0.46.1-2) ...
-
-Selecting previously unselected package python3-pip.
-
-Preparing to unpack .../11-python3-pip_25.1.1+dfsg-1_all.deb ...
-
-Unpacking python3-pip (25.1.1+dfsg-1) ...
-
-Selecting previously unselected package zip.
-
-Preparing to unpack .../12-zip_3.0-15+deb13u1_amd64.deb ...
-
-Unpacking zip (3.0-15+deb13u1) ...
-
-Setting up libpython3.13:amd64 (3.13.5-2+deb13u5) ...
-
-Setting up javascript-common (12+nmu1) ...
-
-Setting up python3-wheel (0.46.1-2) ...
-
-Setting up zip (3.0-15+deb13u1) ...
-
-Setting up libpython3.13-dev:amd64 (3.13.5-2+deb13u5) ...
-
-Setting up python3-pip (25.1.1+dfsg-1) ...
-
-Setting up build-essential (12.12) ...
-
-Setting up libjs-jquery (3.6.1+dfsg+~3.5.14-1) ...
-
-Setting up libjs-underscore (1.13.4~dfsg+~1.11.4-3) ...
-
-Setting up libpython3-dev:amd64 (3.13.5-1) ...
-
-Setting up python3.13-dev (3.13.5-2+deb13u5) ...
-
-Setting up libjs-sphinxdoc (8.1.3-5) ...
-
-Setting up python3-dev (3.13.5-1) ...
-
-Processing triggers for libc-bin (2.41-12+deb13u4) ...
-
-Validating source files...
-
-Python 3.11.18
-
-pip 24.0 from /usr/local/lib/python3.11/site-packages/pip (python 3.11)
-
-Copying Glue script...
-
-Preparing library package...
-
-Upgrading pip...
-
-Requirement already satisfied: pip in /usr/local/lib/python3.11/site-packages (24.0)
-
-Collecting pip
-
-  Downloading pip-26.3-py3-none-any.whl.metadata (4.6 kB)
-
-Downloading pip-26.3-py3-none-any.whl (2.0 MB)
-
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 4.9 MB/s eta 0:00:00
-
-Installing collected packages: pip
-
-  Attempting uninstall: pip
-
-    Found existing installation: pip 24.0
-
-    Uninstalling pip-24.0:
-
-      Successfully uninstalled pip-24.0
-
-Successfully installed pip-26.3
-
-WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
-
-Installing Glue runtime dependencies...
-
-Collecting jsonschema&lt;4.18
-
-  Downloading jsonschema-4.17.3-py3-none-any.whl.metadata (7.9 kB)
-
-Collecting referencing==0.36.2
-
-  Downloading referencing-0.36.2-py3-none-any.whl.metadata (2.8 kB)
-
-Collecting pg8000
-
-  Downloading pg8000-1.31.6-py3-none-any.whl.metadata (88 kB)
-
-Collecting attrs>=22.2.0 (from referencing==0.36.2)
-
-  Downloading attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)
-
-Collecting rpds-py>=0.7.0 (from referencing==0.36.2)
-
-  Downloading rpds_py-2026.9.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.1 kB)
-
-Collecting typing-extensions>=4.4.0 (from referencing==0.36.2)
-
-  Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
-
-Collecting pyrsistent!=0.17.0,!=0.17.1,!=0.17.2,>=0.14.0 (from jsonschema&lt;4.18)
-
-  Downloading pyrsistent-0.20.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (27 kB)
-
-Collecting python-dateutil>=2.8.2 (from pg8000)
-
-  Downloading python_dateutil-4.0.0-py3-none-any.whl.metadata (7.3 kB)
-
-Collecting scramp==1.5.0 (from pg8000)
-
-  Downloading scramp-1.5.0-py3-none-any.whl.metadata (34 kB)
-
-Collecting asn1crypto>=1.5.1 (from scramp==1.5.0->pg8000)
-
-  Downloading asn1crypto-1.5.1-py2.py3-none-any.whl.metadata (13 kB)
-
-Collecting tzdata (from python-dateutil>=2.8.2->pg8000)
-
-  Downloading tzdata-2026.6-py2.py3-none-any.whl.metadata (1.4 kB)
-
-Downloading referencing-0.36.2-py3-none-any.whl (26 kB)
-
-Downloading jsonschema-4.17.3-py3-none-any.whl (90 kB)
-
-Downloading pg8000-1.31.6-py3-none-any.whl (57 kB)
-
-Downloading scramp-1.5.0-py3-none-any.whl (20 kB)
-
-Downloading asn1crypto-1.5.1-py2.py3-none-any.whl (105 kB)
-
-Downloading attrs-26.1.0-py3-none-any.whl (67 kB)
-
-Downloading pyrsistent-0.20.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (120 kB)
-
-Downloading python_dateutil-4.0.0-py3-none-any.whl (92 kB)
-
-Downloading rpds_py-2026.9.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (375 kB)
-
-Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
-
-Downloading tzdata-2026.6-py2.py3-none-any.whl (348 kB)
-
-Installing collected packages: asn1crypto, tzdata, typing-extensions, scramp, rpds-py, pyrsistent, attrs, referencing, python-dateutil, jsonschema, pg8000
-
-
-
-Successfully installed asn1crypto-1.5.1 attrs-26.1.0 jsonschema-4.17.3 pg8000-1.31.6 pyrsistent-0.20.0 python-dateutil-4.0.0 referencing-0.36.2 rpds-py-2026.9.1 scramp-1.5.0 typing-extensions-4.16.0 tzdata-2026.6
-
-WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
-
-Verifying installed Python dependencies...
-
-jsonschema: 4.17.3
-
-referencing: 0.36.2
-
-pg8000: 1.31.6
-
-Registry import: SUCCESS
-
-Resource import: SUCCESS
-
-All runtime dependencies imported successfully.
-
-Copying ingestion package...
-
-Creating ingestion.zip...
-
-Verifying packaged dependencies...
-
-        0  2026-11-13 05:27   rpds/
-
-       99  2026-11-13 05:27   rpds/__init__.py
-
-     2602  2026-11-13 05:27   rpds/__init__.pyi
-
-        0  2026-11-13 05:27   rpds/py.typed
-
-  1056736  2026-11-13 05:27   rpds/rpds.cpython-311-x86_64-linux-gnu.so
-
-        0  2026-11-13 05:27   attrs/
-
-     1183  2026-11-13 05:27   attrs/__init__.py
-
-     9416  2026-11-13 05:27   attrs/__init__.pyi
-
-       76  2026-11-13 05:27   attrs/converters.py
-
-       76  2026-11-13 05:27   attrs/exceptions.py
-
-       73  2026-11-13 05:27   attrs/filters.py
-
-        0  2026-11-13 05:27   attrs/py.typed
-
-       73  2026-11-13 05:27   attrs/setters.py
-
-       76  2026-11-13 05:27   attrs/validators.py
-
-        0  2026-11-13 05:27   referencing/
-
-      207  2026-11-13 05:27   referencing/__init__.py
-
-      791  2026-11-13 05:27   referencing/_attrs.py
-
-      559  2026-11-13 05:27   referencing/_attrs.pyi
-
-    24830  2026-11-13 05:27   referencing/_core.py
-
-     4176  2026-11-13 05:27   referencing/exceptions.py
-
-    18628  2026-11-13 05:27   referencing/jsonschema.py
-
-        0  2026-11-13 05:27   referencing/py.typed
-
-     2697  2026-11-13 05:27   referencing/retrieval.py
-
-     1445  2026-11-13 05:27   referencing/typing.py
-
-        0  2026-11-13 05:27   referencing/tests/
-
-        0  2026-11-13 05:27   referencing/tests/__init__.py
-
-    37854  2026-11-13 05:27   referencing/tests/test_core.py
-
-      934  2026-11-13 05:27   referencing/tests/test_exceptions.py
-
-    11687  2026-11-13 05:27   referencing/tests/test_jsonschema.py
-
-     2335  2026-11-13 05:27   referencing/tests/test_referencing_suite.py
-
-     3719  2026-11-13 05:27   referencing/tests/test_retrieval.py
-
-        0  2026-11-13 05:27   jsonschema/
-
-     2187  2026-11-13 05:27   jsonschema/__init__.py
-
-       40  2026-11-13 05:27   jsonschema/__main__.py
-
-    14575  2026-11-13 05:27   jsonschema/_format.py
-
-    10549  2026-11-13 05:27   jsonschema/_legacy_validators.py
-
-     5425  2026-11-13 05:27   jsonschema/_types.py
-
-    10429  2026-11-13 05:27   jsonschema/_utils.py
-
-    15956  2026-11-13 05:27   jsonschema/_validators.py
-
-     8518  2026-11-13 05:27   jsonschema/cli.py
-
-    11336  2026-11-13 05:27   jsonschema/exceptions.py
-
-     7295  2026-11-13 05:27   jsonschema/protocols.py
-
-    38150  2026-11-13 05:27   jsonschema/validators.py
-
-        0  2026-11-13 05:27   jsonschema/benchmarks/
-
-       70  2026-11-13 05:27   jsonschema/benchmarks/__init__.py
-
-      506  2026-11-13 05:27   jsonschema/benchmarks/issue232.py
-
-      320  2026-11-13 05:27   jsonschema/benchmarks/json_schema_test_suite.py
-
-        0  2026-11-13 05:27   jsonschema/benchmarks/issue232/
-
-   117105  2026-11-13 05:27   jsonschema/benchmarks/issue232/issue.json
-
-        0  2026-11-13 05:27   jsonschema/schemas/
-
-     1785  2026-11-13 05:27   jsonschema/schemas/draft2019-09.json
-
-     2452  2026-11-13 05:27   jsonschema/schemas/draft2020-12.json
-
-     2600  2026-11-13 05:27   jsonschema/schemas/draft3.json
-
-     4357  2026-11-13 05:27   jsonschema/schemas/draft4.json
-
-     4437  2026-11-13 05:27   jsonschema/schemas/draft6.json
-
-     4819  2026-11-13 05:27   jsonschema/schemas/draft7.json
-
-        0  2026-11-13 05:27   jsonschema/schemas/vocabularies/
-
-        0  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2019-09/
-
-     1860  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2019-09/applicator
-
-      517  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2019-09/content
-
-     1531  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2019-09/core
-
-      892  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2019-09/meta-data
-
-     2834  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2019-09/validation
-
-        0  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/
-
-     1659  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/applicator
-
-      519  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/content
-
-     1564  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/core
-
-      403  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/format
-
-      448  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/format-annotation
-
-      445  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/format-assertion
-
-      892  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/meta-data
-
-      506  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/unevaluated
-
-     2834  2026-11-13 05:27   jsonschema/schemas/vocabularies/draft2020-12/validation
-
-        0  2026-11-13 05:27   jsonschema/tests/
-
-        0  2026-11-13 05:27   jsonschema/tests/__init__.py
-
-      618  2026-11-13 05:27   jsonschema/tests/_helpers.py
-
-     7052  2026-11-13 05:27   jsonschema/tests/_suite.py
-
-     1114  2026-11-13 05:27   jsonschema/tests/fuzz_validate.py
-
-    28857  2026-11-13 05:27   jsonschema/tests/test_cli.py
-
-     9284  2026-11-13 05:27   jsonschema/tests/test_deprecations.py
-
-    19639  2026-11-13 05:27   jsonschema/tests/test_exceptions.py
-
-     3810  2026-11-13 05:27   jsonschema/tests/test_format.py
-
-    18090  2026-11-13 05:27   jsonschema/tests/test_jsonschema_test_suite.py
-
-     6983  2026-11-13 05:27   jsonschema/tests/test_types.py
-
-     3749  2026-11-13 05:27   jsonschema/tests/test_utils.py
-
-    78785  2026-11-13 05:27   jsonschema/tests/test_validators.py
-
-        0  2026-11-13 05:27   pg8000/
-
-     4858  2026-11-13 05:27   pg8000/__init__.py
-
-    19269  2026-11-13 05:27   pg8000/converters.py
-
-    28790  2026-11-13 05:27   pg8000/core.py
-
-    30917  2026-11-13 05:27   pg8000/dbapi.py
-
-      887  2026-11-13 05:27   pg8000/exceptions.py
-
-    25800  2026-11-13 05:27   pg8000/legacy.py
-
-     9293  2026-11-13 05:27   pg8000/native.py
-
-     8397  2026-11-13 05:27   pg8000/types.py
-
-Verifying ingestion source...
-
-        0  2026-11-13 05:27   ingestion/dataguard/
-
-     1623  2026-11-13 05:27   ingestion/dataguard/__init__.py
-
-     2201  2026-11-13 05:27   ingestion/dataguard/audit.py
-
-    17741  2026-11-13 05:27   ingestion/dataguard/contracts.py
-
-      357  2026-11-13 05:27   ingestion/dataguard/errors.py
-
-     1199  2026-11-13 05:27   ingestion/dataguard/identity.py
-
-     5542  2026-11-13 05:27   ingestion/dataguard/leases.py
-
-     7057  2026-11-13 05:27   ingestion/dataguard/outbox.py
-
-    25185  2026-11-13 05:27   ingestion/dataguard/state.py
-
-    21346  2026-11-13 05:27   ingestion/dataguard/validation.py
-
-Verifying imports from final ingestion.zip...
-
-Traceback (most recent call last):
-
-  File "&lt;string>", line 3, in &lt;module>
-
-  File "/tmp/tmp.QNhWI8DlPG/ingestion.zip/referencing/__init__.py", line 5, in &lt;module>
-
-  File "/tmp/tmp.QNhWI8DlPG/ingestion.zip/referencing/_core.py", line 9, in &lt;module>
-
-  File "/tmp/tmp.QNhWI8DlPG/ingestion.zip/rpds/__init__.py", line 1, in &lt;module>
-
-ModuleNotFoundError: No module named 'rpds.rpds'
