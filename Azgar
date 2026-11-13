@@ -1,17 +1,129 @@
+
+set -e
+set +x
+
+if [ -x "$(command -v git)" ]; then
+  git config --global --add safe.directory '*' || true
+fi
+
+# Install system dependencies
+apt-get update
+apt-get install -y zip unzip curl
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+# Navigate to test directory
 cd lambda/<+pipeline.variables.moduleName>/tests
 
-echo "Python version:"
-python --version
+echo "======================================"
+echo "Python Environment"
+echo "======================================"
 
-echo "Installing dependencies..."
+python --version
+python -m pip --version
+
+# Install Lambda and test dependencies
+echo "Installing Python dependencies..."
+
 python -m pip install --no-cache-dir \
   -r ../src/requirements.txt \
   boto3 \
   botocore \
   pytest
 
-echo "Verifying AWS SDK..."
-python -c "import boto3, botocore; print('boto3:', boto3.__version__); print('botocore:', botocore.__version__)"
+# Verify dependencies
+echo "Verifying installed dependencies..."
 
-echo "Running unit tests..."
+python -c "import boto3, botocore, pytest; print('boto3:', boto3.__version__); print('botocore:', botocore.__version__); print('pytest:', pytest.__version__)"
+
+echo "Installed packages:"
+python -m pip list
+
+# Execute unit tests
+echo "======================================"
+echo "Running Unit Tests"
+echo "======================================"
+
 python -m pytest --ignore=bdd --junitxml=junitresult.xml
+
+# Execute BDD tests
+echo "======================================"
+echo "Running BDD Tests"
+echo "======================================"
+
+set +e
+
+if [ -d bdd ]; then
+  bdd_test_output=$(python -m pytest bdd --junitxml=<+pipeline.variables.TestResultsFileName> 2>&1)
+  bdd_test_exitcd=$?
+else
+  cp junitresult.xml <+pipeline.variables.TestResultsFileName>
+  bdd_test_exitcd=0
+fi
+
+set -e
+
+# Generate Vortex report
+VortexFilename="result.$(date +"%Y.%m.%d-%H.%M.%S").xml"
+
+cp "<+pipeline.variables.TestResultsFileName>" "$VortexFilename"
+
+# Create pre-deployment test archive
+ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
+
+echo "Creating test archive: $ArchiveName"
+
+zip -q "$ArchiveName" "<+pipeline.variables.TestResultsFileName>"
+
+# Report Portal
+echo "Report Portal import URL: <+variable.ReportPortalImportUrl>"
+
+AccessToken="<+secrets.getValue("account.ReportPortalHarnessAccessToken")>"
+
+# Uncomment when Report Portal upload is required
+# curl -f -F "file=@$ArchiveName" \
+#   -H "Authorization: Bearer $AccessToken" \
+#   "<+variable.ReportPortalImportUrl>"
+
+# Download Zephyr uploader
+echo "======================================"
+echo "Downloading Zephyr Uploader"
+echo "======================================"
+
+curl -fsS -o ZephyrUpload-current.tar.gz \
+  "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz" \
+  -H "Authorization: <+secrets.getValue("account.JFrog_Cloud_API_Token")>"
+
+# Extract Zephyr uploader
+tar -xzf ZephyrUpload-current.tar.gz
+
+cd ZephyrUpload-current
+
+# Install Zephyr dependencies
+python -m pip install --no-cache-dir \
+  -r ./ZephyrUpload/requirements.txt
+
+# Upload results to Zephyr
+echo "Uploading test results to Zephyr..."
+
+python3 ZephyrUpload \
+  "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction" \
+  -type All \
+  -features "../" \
+  -junit "../$VortexFilename" \
+  -auth "<+secrets.getValue("raas_zephyr_token")>" \
+  -userid "<+secrets.getValue("raas_zephyr_userid")>" \
+  -noname
+
+cd ..
+
+# Fail pipeline if BDD tests failed
+if [ "$bdd_test_exitcd" -ne 0 ]; then
+  echo "BDD tests failed:"
+  echo "$bdd_test_output"
+  exit "$bdd_test_exitcd"
+fi
+
+echo "======================================"
+echo "Unit Tests and BDD Completed"
+echo "======================================"
