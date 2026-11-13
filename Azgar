@@ -1,64 +1,141 @@
-
-set -euo pipefail
-
-apt-get update
-apt-get install -y zip rsync unzip
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-
-# Generate package version
-export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>
-
-echo "Package version: ${package_version}"
-
-# Update Lambda version
-find lambda/<+pipeline.variables.moduleName>/src \
-  -name '*.py' \
-  -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
-
-# Define package
-export packaged_file="<+pipeline.variables.moduleName>-${package_version}.zip"
-
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-SRC_DIR="${REPO_ROOT}/lambda/<+pipeline.variables.moduleName>/src"
-
-cd "${SRC_DIR}"
-
-# Copy internal libraries
-if [ -d "../tests/libs" ]; then
-  echo "Copying internal libraries..."
-  rsync -r --exclude='__pycache__/' --exclude='*.pyc' ../tests/libs/ ./
+Executing the following command(s):
+set -e
+set +x
+if [ -x "$(command -v git)" ]; then
+  git config --global --add safe.directory '*' || true 
 fi
+apt-get update &amp;&amp; \
+  apt-get install -y zip unzip &amp;&amp; \
+  apt-get clean;
 
-# Install Python dependencies
-if [ -f requirements.txt ]; then
-  echo "Installing Python dependencies..."
-  python -m pip install \
-    --no-cache-dir \
-    --no-compile \
-    -r requirements.txt \
-    --target .
+cd lambda/batch-publishing/tests
+echo "Execute setup environment script ..."
+. setup-env.sh setupjava
+pip list
+pytest --ignore=bdd --junitxml=junitresult.xml
+
+set +e
+if [ -d bdd ]; then
+  bdd_test_output=$(pytest bdd --junitxml=junitresults-bdd.xml)
+  bdd_test_exitcd=$?
 else
-  echo "ERROR: requirements.txt not found!"
-  exit 1
+  cp junitresult.xml junitresults-bdd.xml
+  bdd_test_exitcd=0
 fi
+set -e
 
-# Remove unnecessary Python cache files
-find . -type d -name '__pycache__' -prune -exec rm -rf {} +
-find . -type f -name '*.pyc' -delete
+VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
+cp "junitresults-bdd.xml" $VortexFilename
 
-# Create deployment ZIP
-echo "Creating Lambda deployment package..."
-rm -f "${REPO_ROOT}/${packaged_file}"
+ArchiveName="RaaS_BatchPublishing_PreDeploy.zip"
+echo "Adding 'junitresults-bdd.xml' to archive: $ArchiveName"
+zip $ArchiveName "junitresults-bdd.xml"
 
-zip -r -q "${REPO_ROOT}/${packaged_file}" . \
-  -x '*__pycache__*' '*.pyc'
+echo "Uploading archive to Report Portal (https://reportportal.deluxe.com/api/v1/RAAS/launch/import)"
+AccessToken="**************"
+# curl -F "file=@$ArchiveName" -H "Authorization: ************** "https://reportportal.deluxe.com/api/v1/RAAS/launch/import" 
 
-# Validate ZIP
-unzip -t "${REPO_ROOT}/${packaged_file}"
+curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-current.tar.gz" -H "Authorization: ************** -xzf ./ZephyrUpload-current.tar.gz
+cd ./ZephyrUpload-current
+pip3 install -r ./ZephyrUpload/requirements.txt
+python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction" -type All -features "../" -junit "../$VortexFilename" -auth "**************" -userid "1" -noname
+cd ..
 
-echo "Package created successfully:"
-ls -lh "${REPO_ROOT}/${packaged_file}"
+if [ $bdd_test_exitcd -ne 0 ]
+then 
+  echo $bdd_test_output
+  exit $bdd_test_exitcd
+fi
+Hit:1 http://deb.debian.org/debian trixie InRelease
 
-# Export Harness output
-echo "Packaged file: ${packaged_file}"
+Get:2 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
+
+Get:3 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
+
+Get:4 http://deb.debian.org/debian trixie/main amd64 Packages [9678 kB]
+
+Get:5 http://deb.debian.org/debian trixie-updates/main amd64 Packages [1108 B]
+
+Get:6 http://deb.debian.org/debian-security trixie-security/main amd64 Packages [302 kB]
+
+Fetched 10.1 MB in 1s (13.6 MB/s)
+
+Reading package lists...
+
+Reading package lists...
+
+Building dependency tree...
+
+Reading state information...
+
+unzip is already the newest version (6.0-29+deb13u1).
+
+The following NEW packages will be installed:
+
+  zip
+
+0 upgraded, 1 newly installed, 0 to remove and 5 not upgraded.
+
+Need to get 235 kB of archives.
+
+After this operation, 642 kB of additional disk space will be used.
+
+Get:1 http://deb.debian.org/debian trixie/main amd64 zip amd64 3.0-15+deb13u1 [235 kB]
+
+debconf: unable to initialize frontend: Dialog
+
+debconf: (TERM is not set, so the dialog frontend is not usable.)
+
+debconf: falling back to frontend: Readline
+
+debconf: unable to initialize frontend: Readline
+
+debconf: (This frontend requires a controlling tty.)
+
+debconf: falling back to frontend: Teletype
+
+debconf: unable to initialize frontend: Teletype
+
+debconf: (This frontend requires a controlling tty.)
+
+debconf: falling back to frontend: Noninteractive
+
+Fetched 235 kB in 0s (7696 kB/s)
+
+Selecting previously unselected package zip.
+
+(Reading database ... 
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 26756 files and directories currently installed.)
+
+Preparing to unpack .../zip_3.0-15+deb13u1_amd64.deb ...
+
+Unpacking zip (3.0-15+deb13u1) ...
+
+Setting up zip (3.0-15+deb13u1) ...
+
+Execute setup environment script ...
+
+bash: line 12: setup-env.sh: No such file or directory
+
+Number of cases parsed in each file: map[tests/fixtures/inventory.xml:0]
+parsed 0 test cases
