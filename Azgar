@@ -1,32 +1,68 @@
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "DenyIncorrectEncryptionHeader",
-            "Effect": "Deny",
-            "Principal": "*",
-            "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::dlx-r360plus-redaction-ingestion-dev/*",
-            "Condition": {
-                "StringNotEquals": {
-                    "s3:x-amz-server-side-encryption": [
-                        "aws:kms",
-                        "AES256"
-                    ]
-                }
-            }
-        },
-        {
-            "Sid": "DenyUnEncryptedObjectUploads",
-            "Effect": "Deny",
-            "Principal": "*",
-            "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::dlx-r360plus-redaction-ingestion-dev/*",
-            "Condition": {
-                "Null": {
-                    "s3:x-amz-server-side-encryption": "true"
-                }
-            }
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Enable IAM User Permissions",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::697179190149:root"
+      },
+      "Action": "kms:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "Allow access for Key Administrators",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": [
+        "kms:Update*",
+        "kms:UntagResource",
+        "kms:TagResource",
+        "kms:ScheduleKeyDeletion",
+        "kms:Revoke*",
+        "kms:ReEncrypt*",
+        "kms:Put*",
+        "kms:List*",
+        "kms:Get*",
+        "kms:GenerateDataKey*",
+        "kms:Encrypt",
+        "kms:Enable*",
+        "kms:Disable*",
+        "kms:DescribeKey",
+        "kms:Describe*",
+        "kms:Delete*",
+        "kms:Decrypt",
+        "kms:Create*",
+        "kms:CancelKeyDeletion"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnLike": {
+          "aws:PrincipalArn": "arn:aws:iam::697179190149:role/DeluxeAdmin"
         }
-    ]
-}
+      }
+    },
+    {
+      "Sid": "Allow attachment of persistent resources",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": [
+        "kms:RevokeGrant",
+        "kms:ListGrants",
+        "kms:CreateGrant"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "Bool": {
+          "kms:GrantIsForAWSResource": "true"
+        },
+        "ArnLike": {
+          "aws:PrincipalArn": "arn:aws:iam::697179190149:role/DeluxeAdmin"
+        }
+      }
+    }
+  ]
