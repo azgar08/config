@@ -1,119 +1,233 @@
-INFO	2026-11-13T07:29:47,598	6681	org.apache.spark.util.ShutdownHookManager	[shutdown-hook-0]	60	Shutdown hook called
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
-	at com.amazonaws.services.glue.SparkProcessLauncherPlugin.invoke(ProcessLauncher.scala:55)
-	at com.amazonaws.services.glue.SparkProcessLauncherPlugin.invoke$(ProcessLauncher.scala:55)
-	at com.amazonaws.services.glue.ProcessLauncher$$anon$1.invoke(ProcessLauncher.scala:193)
-	at com.amazonaws.services.glue.ProcessLauncher.launch(ProcessLauncher.scala:421)
-	at com.amazonaws.services.glue.ProcessLauncher$.main(ProcessLauncher.scala:35)
-	at com.amazonaws.services.glue.ProcessLauncher.main(ProcessLauncher.scala)
-Caused by: org.apache.spark.SparkUserAppException: User application exited with 1
-	at org.apache.spark.deploy.PythonRunner$.main(PythonRunner.scala:112)
-	at org.apache.spark.deploy.PythonRunner.main(PythonRunner.scala)
-	... 10 more
-java.lang.reflect.InvocationTargetException
-INFO	2026-11-13T07:29:47,592	6675	com.amazonaws.services.glue.ProcessLauncher	[main]	60	postprocessing
-ERROR	2026-11-13T07:29:47,591	6674	com.amazonaws.services.glueexceptionanalysis.GlueExceptionAnalysisListener	[main]	9	[Glue Exception Analysis] Last Executed Line number from script spark_job.py: 72
-ERROR	2026-11-13T07:29:47,591	6674	com.amazonaws.services.glueexceptionanalysis.GlueExceptionAnalysisListener	[main]	9	[Glue Exception Analysis] {"Event":"GlueETLJobExceptionEvent","Timestamp":1794554987390,"Failure Reason":"Traceback (most recent call last):\n  File \"<frozen runpy>\", line 291, in run_path\n  File \"<frozen runpy>\", line 98, in _run_module_code\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/tmp/glue-job-10423145905052152575/spark_job.py\", line 72, in <module>\n    main()\n  File \"/tmp/glue-job-10423145905052152575/spark_job.py\", line 67, in main\n    raise SystemExit(1) from None\nSystemExit: 1","Stack Trace":[{"Declaring Class":"main","Method Name":"raise SystemExit(1) from None","File Name":"/tmp/glue-job-10423145905052152575/spark_job.py","Line Number":67},{"Declaring Class":"<module>","Method Name":"main()","File Name":"/tmp/glue-job-10423145905052152575/spark_job.py","Line Number":72}],"Last Executed Line number":72,"script":"spark_job.py"}
-ERROR	2026-11-13T07:29:47,177	6260	com.amazonaws.services.glue.ProcessLauncher	[main]	76	Error from Python:Traceback (most recent call last):
-  File "<frozen runpy>", line 291, in run_path
-  File "<frozen runpy>", line 98, in _run_module_code
-  File "<frozen runpy>", line 88, in _run_code
-  File "/tmp/glue-job-10423145905052152575/spark_job.py", line 72, in <module>
-    main()
-  File "/tmp/glue-job-10423145905052152575/spark_job.py", line 67, in main
-    raise SystemExit(1) from None
-SystemExit: 1
-INFO	2026-11-13T07:29:44,018	3101	com.amazonaws.services.glue.SafeLogging	[main]	60	Initializing logging subsystem
-INFO	2026-11-13T07:29:43,724	2807	com.amazonaws.services.gluedi.sensei.autodebugging.AutoDebuggingProxy	[main]	265	initializing AutoDebuggingProxy
-INFO	2026-11-13T07:29:43,453	2536	com.amazonaws.services.glue.utils.EndpointConfig$	[main]	88	Endpoints: {credentials_provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain, glue.endpoint=https://glue.us-east-1.amazonaws.com, lakeformation.endpoint=https://lakeformation.us-east-1.amazonaws.com, jes.endpoint=https://glue-jes-prod.us-east-1.amazonaws.com, region=us-east-1}
-INFO	2026-11-13T07:29:43,029	2112	com.amazonaws.services.glue.utils.EndpointConfig$	[main]	34	 STAGE is prod
-Fri Nov 13 07:29:40 UTC 2026
-Launching ...
-Running autoDebugger shutdown hook.
-INFO	2026-11-13T07:29:40,421	47748	com.amazonaws.services.glue.utils.concurrent.GlueConcurrentAsyncProcessingService	[main]	50	shutdownAsyncProcessing has been Started
-INFO	2026-11-13T07:29:40,422	47749	com.amazonaws.services.glue.utils.concurrent.GlueConcurrentAsyncProcessingService	[main]	76	shutdownAsyncProcessing has been completed
-INFO	2026-11-13T07:29:40,413	47740	com.amazonaws.services.glue.utils.concurrent.PythonModuleTask	[pool-5-thread-1]	39	Setting Up Virtual Env and Application Python Modules has been completed in async mode
-INFO	2026-11-13T07:29:40,177	47504	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute /usr/bin/bash /tmp/glue-job-10423145905052152575/pythonmodules/createvenvzip.sh /tmp/glue_venv /tmp/glue-job-10423145905052152575_glue_venv.zip
-INFO	2026-11-13T07:29:35,219	42546	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute /usr/bin/bash /tmp/glue-job-10423145905052152575/pythonmodules/pythonmoduleinstaller.sh /tmp/glue_venv EMPTY jsonschema[format]==4.25.1 pg8000==1.31.6 referencing==0.36.2
-INFO	2026-11-13T07:29:28,993	36320	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute /usr/bin/bash /tmp/glue-job-10423145905052152575/pythonmodules/pythonmoduleinstaller.sh /tmp/glue_venv --no-index --no-deps /tmp/glue-job-10423145905052152575/python/ER7jN0-AwsGlueMLLibs/amzn_awsgluemlpythonlibs-1.0-py3-none-any.whl
-INFO	2026-11-13T07:29:28,987	36314	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute unzip /tmp/glue-job-10423145905052152575/python/ER7jN0-AwsGlueMLLibs.py.zip -d /tmp/glue-job-10423145905052152575/python/ER7jN0-AwsGlueMLLibs
-INFO	2026-11-13T07:29:26,398	33725	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute /usr/bin/bash /tmp/glue-job-10423145905052152575/pythonmodules/pythonmoduleinstaller.sh /tmp/glue_venv --no-index --no-deps /tmp/glue-job-10423145905052152575/python/Zh2Mrr-AWSGlueDataplanePython-5.0.1197/amzn_awsgluelibs-5.0.1197-py3-none-any.whl
-INFO	2026-11-13T07:29:26,350	33677	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute unzip /tmp/glue-job-10423145905052152575/python/Zh2Mrr-AWSGlueDataplanePython-5.0.1197.py.zip -d /tmp/glue-job-10423145905052152575/python/Zh2Mrr-AWSGlueDataplanePython-5.0.1197
-INFO	2026-11-13T07:29:22,505	29832	com.amazonaws.services.glue.launch.helpers.FileManager	[main]	129	Script should be downloaded at /tmp/glue-job-10423145905052152575/spark_job.py 
-INFO	2026-11-13T07:29:22,505	29832	com.amazonaws.services.glue.FileDownloader	[sdk-async-response-2-0]	146	Object downloaded. Details: GetObjectResponse(AcceptRanges=bytes, LastModified=2026-11-12T11:22:28Z, ContentLength=3265, ETag="c54c4098370040f62a729c808e150e54", VersionId=9vqn1uLRZ_mQIGKpzOhRNzZ.UPpdicik, ContentType=application/octet-stream, ServerSideEncryption=aws:kms, Metadata={}, SSEKMSKeyId=*** Sensitive Data Redacted ***)
-INFO	2026-11-13T07:29:21,439	28766	com.amazonaws.services.glue.FileDownloader	[main]	139	Download bucket: dlx-r360plus-redaction-ingestion-dev key: scripts/dev/spark_job.py to /tmp/glue-job-10423145905052152575/spark_job.py with usingProxy: false and isProxyDisabled: true
-INFO	2026-11-13T07:29:21,427	28754	com.amazonaws.services.glue.utils.AWSS3Utils$	[main]	29	Encoding S3 URI s3://dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py
-INFO	2026-11-13T07:29:21,428	28755	com.amazonaws.services.glue.utils.AWSS3Utils$	[main]	34	Encoded S3 URI to s3://dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py
-INFO	2026-11-13T07:29:20,943	28270	com.amazonaws.services.glue.FileDownloader	[main]	96	downloading s3://dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py file to destination location: /tmp/glue-job-10423145905052152575/spark_job.py
-INFO	2026-11-13T07:29:20,936	28263	com.amazonaws.services.glue.PrepareLaunch	[main]	228	list of connectors to be added in classpath: List()
-INFO	2026-11-13T07:29:20,617	27944	com.amazonaws.services.glue.launch.helpers.ConnectionsManager	[main]	78	GLUE_CONNECTIVITY: attached connection types: ListBuffer()
-INFO	2026-11-13T07:29:20,541	27868	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-10423145905052152575/aws_glue_connectors/selected/native
-INFO	2026-11-13T07:29:20,541	27868	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-10423145905052152575/aws_glue_connectors/marketplace
-INFO	2026-11-13T07:29:20,540	27867	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-10423145905052152575/aws_glue_connectors/selected
-INFO	2026-11-13T07:29:20,540	27867	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-10423145905052152575/exception_catch
-INFO	2026-11-13T07:29:20,541	27868	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-10423145905052152575/amazon
-INFO	2026-11-13T07:29:20,541	27868	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-10423145905052152575/amazon/certs
-INFO	2026-11-13T07:29:20,540	27867	com.amazonaws.services.glue.PrepareLaunch	[main]	311	Creating directory /tmp/glue-job-10423145905052152575/aws_glue_connectors
-INFO	2026-11-13T07:29:20,519	27846	com.amazonaws.services.glue.launch.helpers.LoggerPropsManager	[main]	78	setting up the log4j.configurationFile=/tmp/glue-job-10423145905052152575/glue-1286542016352546946log4j2.properties
-INFO	2026-11-13T07:29:19,629	26956	com.amazonaws.services.glue.FileDownloader	[main]	96	downloading /tmp/glue-1286542016352546946log4j2.properties file to destination location: /tmp/glue-job-10423145905052152575/glue-1286542016352546946log4j2.properties
-WARN	2026-11-13T07:29:19,625	26952	com.amazonaws.services.glue.launch.helpers.LoggerPropsManager	[main]	60	Logger setup failed for exception analysis: Cannot invoke "java.net.URL.toURI()" because the return value of "java.lang.Class.getResource(String)" is null
-INFO	2026-11-13T07:29:19,622	26949	com.amazonaws.services.glue.launch.helpers.LoggerPropsManager	[main]	31	setupLoggerProperties...
-INFO	2026-11-13T07:29:19,616	26943	com.amazonaws.services.glue.launch.helpers.SparkPropsManagerHelper	[main]	114	optimizeParallelismConfigs started 
-INFO	2026-11-13T07:29:19,589	26916	com.amazonaws.services.gluedi.sensei.autodebugging.AutoDebuggingProxy	[main]	274	registering spark listeners
-INFO	2026-11-13T07:29:19,435	26762	com.amazonaws.services.gluedi.sensei.autodebugging.AutoDebuggingProxy	[main]	265	initializing AutoDebuggingProxy
-INFO	2026-11-13T07:29:18,585	25912	com.amazonaws.services.glue.utils.AWSClientUtils$	[main]	97	AWSClientUtils: create aws sts client with conf: proxy hostnull, proxy port 0
-INFO	2026-11-13T07:29:18,547	25874	com.amazonaws.services.glue.utils.EndpointConfig$	[main]	88	Endpoints: {credentials_provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain, glue.endpoint=https://glue.us-east-1.amazonaws.com, lakeformation.endpoint=https://lakeformation.us-east-1.amazonaws.com, jes.endpoint=https://glue-jes-prod.us-east-1.amazonaws.com, region=us-east-1}
-INFO	2026-11-13T07:29:18,220	25547	com.amazonaws.services.glue.utils.EndpointConfig$	[main]	34	 STAGE is prod
-INFO	2026-11-13T07:29:18,185	25512	com.amazonaws.services.glue.launch.helpers.SparkPropsManagerHelper	[main]	100	
-proxy {
-  host = null
-  port = -1
-}
-INFO	2026-11-13T07:29:18,141	25468	com.amazonaws.services.glue.launch.helpers.PrepareLaunchProperties	[main]	89	Get job script: spark_job.py.
-INFO	2026-11-13T07:29:18,135	25462	com.amazonaws.services.glue.PythonModuleInstaller	[pool-5-thread-1]	179	Command to Execute python3.11 -m venv --clear /tmp/glue_venv
-INFO	2026-11-13T07:29:18,129	25456	com.amazonaws.services.glue.utils.concurrent.PythonModuleTask	[pool-5-thread-1]	25	Setting Up Virtual Env and Application/Customer Provided Python Modules started in async mode
-INFO	2026-11-13T07:29:18,088	25415	com.amazonaws.services.glue.PrepareLaunch	[main]	184	Launching PythonModuleTask for --additional-python-modules
-INFO	2026-11-13T07:29:16,183	23510	com.amazonaws.services.glue.PrepareLaunch	[main]	149	Using --additional-python-modules for Python dependency management
-1794554955668
-26/11/13 07:29:15 INFO GlueLibsDownloader: Elapsed time: 1536 millis
-26/11/13 07:29:14 INFO GlueLibsDownloader: Elapsed time: 699 millis
-26/11/13 07:29:11 WARN VersionInfoUtils: The AWS SDK for Java 1.x entered maintenance mode starting July 31, 2024 and will reach end of support on December 31, 2025. For more information, see https://aws.amazon.com/blogs/developer/the-aws-sdk-for-java-1-x-is-in-maintenance-mode-effective-july-31-2024/
-You can print where on the file system the AWS SDK for Java 1.x core runtime is located by setting the AWS_JAVA_V1_PRINT_LOCATION environment variable or aws.java.v1.printLocation system property to 'true'.
-This message can be disabled by setting the AWS_JAVA_V1_DISABLE_DEPRECATION_ANNOUNCEMENT environment variable or aws.java.v1.disableDeprecationAnnouncement system property to 'true'.
-The AWS SDK for Java 1.x is being used here:
-at java.base/java.lang.Thread.getStackTrace(Thread.java:1619)
-at glue.shaded.com.amazonaws.util.VersionInfoUtils.printDeprecationAnnouncement(VersionInfoUtils.java:81)
-at glue.shaded.com.amazonaws.util.VersionInfoUtils.<clinit>(VersionInfoUtils.java:59)
-at glue.shaded.com.amazonaws.internal.EC2ResourceFetcher.<clinit>(EC2ResourceFetcher.java:44)
-at glue.shaded.com.amazonaws.auth.InstanceMetadataServiceCredentialsFetcher.<init>(InstanceMetadataServiceCredentialsFetcher.java:38)
-at glue.shaded.com.amazonaws.auth.InstanceProfileCredentialsProvider.<init>(InstanceProfileCredentialsProvider.java:111)
-at glue.shaded.com.amazonaws.auth.InstanceProfileCredentialsProvider.<init>(InstanceProfileCredentialsProvider.java:91)
-at glue.shaded.com.amazonaws.auth.InstanceProfileCredentialsProvider.<init>(InstanceProfileCredentialsProvider.java:75)
-at glue.shaded.com.amazonaws.auth.InstanceProfileCredentialsProvider.<clinit>(InstanceProfileCredentialsProvider.java:58)
-at glue.shaded.com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper.initializeProvider(EC2ContainerCredentialsProviderWrapper.java:66)
-at glue.shaded.com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper.<init>(EC2ContainerCredentialsProviderWrapper.java:55)
-at glue.shaded.com.amazonaws.auth.DefaultAWSCredentialsProviderChain.<init>(DefaultAWSCredentialsProviderChain.java:60)
-at glue.shaded.com.amazonaws.auth.DefaultAWSCredentialsProviderChain.<clinit>(DefaultAWSCredentialsProviderChain.java:54)
-at glue.shaded.com.amazonaws.services.s3.AmazonS3ClientBuilder.standard(AmazonS3ClientBuilder.java:46)
-at glue.shaded.com.amazonaws.services.s3.AmazonS3Client.builder(AmazonS3Client.java:740)
-at com.amazonaws.services.glue.GlueLibsDownloader$Builder.getS3Client(GlueLibsDownloader.java:351)
-at com.amazonaws.services.glue.GlueLibsDownloader$Builder.build(GlueLibsDownloader.java:343)
-at com.amazonaws.services.glue.GlueBootstrap.downloadGlueLibs(GlueBootstrap.java:411)
-at com.amazonaws.services.glue.GlueBootstrap.lambda$setUpGlueAndUserLibs$1(GlueBootstrap.java:162)
-at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
-at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-at java.base/java.lang.Thread.run(Thread.java:840)
-26/11/13 07:29:11 INFO GlueBootstrap: Downloading customer supplied extra files...
-26/11/13 07:29:11 INFO GlueBootstrap: Downloading Glue libs...
-26/11/13 07:29:11 INFO GlueBootstrap: Glue Bootstrapping the driver...
-26/11/13 07:29:11 INFO GlueBootstrap: Glue Bootstrapping...
-openjdk version "17.0.20" 2026-07-21 LTS
-OpenJDK Runtime Environment Corretto-17.0.20.8.1 (build 17.0.20+8-LTS)
-OpenJDK 64-Bit Server VM Corretto-17.0.20.8.1 (build 17.0.20+8-LTS, mixed mode, sharing)
-/etc/alternatives/jre/bin/java --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED --add-exports=jdk.naming.dns/com.sun.jndi.dns=java.naming --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.util.regex=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.util.calendar=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED --add-opens=java.base/jdk.internal=ALL-UNNAMED --add-opens=java.base/jdk.internal.ref=ALL-UNNAMED --add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED --add-opens=java.base/jdk.internal.util=ALL-UNNAMED --add-opens=java.base/jdk.internal.util.random=ALL-UNNAMED --add-opens=java.sql/java.sql=ALL-UNNAMED --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED -XX:+IgnoreUnrecognizedVMOptions -Djavax.net.ssl.trustStore=/opt/amazon/certs/InternalAndExternalAndAWSTrustStore.jks -Djavax.net.ssl.trustStoreType=JKS -Djavax.net.ssl.trustStorePassword=amazon -DRDS_ROOT_CERT_PATH=/opt/amazon/certs/rds-combined-ca-bundle.pem -DREDSHIFT_ROOT_CERT_PATH=/opt/amazon/certs/redshift-ssl-ca-cert.pem -DRDS_TRUSTSTORE_URL=file:/opt/amazon/certs/InternalAndExternalAndAWSTrustStore.jks -Dlog4j2.configurationFile=/etc/spark/conf.dist/log4j2.properties -cp /usr/share/aws/aws-glue-shuffle/*:/usr/share/aws/emr-glue-bootstrap/*:/usr/lib/spark/jars/*:/usr/lib/spark/conf:/usr/share/aws/aws-java-sdk-v2/*:/usr/share/aws/*:/usr/share/aws/hmclient/lib/aws-glue-datacatalog-spark-client.jar:/usr/share/aws/hmclient/lib/*:/usr/share/aws/iceberg/lib/*:/usr/share/aws/delta/lib/*:/usr/lib/hudi/*:/usr/share/aws/redshift/jdbc/*:/usr/share/aws/redshift/spark-redshift/lib/*:/usr/share/aws/glue-connectors/lib/*:/usr/share/aws/glue-pii-dependencies/lib/*:/usr/share/aws/datazone-openlineage-spark/lib/*:/usr/lib/hadoop/lib/*::/usr/lib/hadoop-lzo/lib/*:/usr/share/aws/aws-java-sdk/*:/usr/share/aws/emr/emrfs/conf:/usr/share/aws/emr/emrfs/lib/*:/usr/share/aws/emr/emrfs/auxlib/*:/usr/share/aws/emr/ddb/lib/emr-ddb-hadoop.jar:/usr/share/aws/emr/goodies/lib/emr-hadoop-goodies.jar:/usr/share/aws/emr/cloudwatch-sink/lib/*:/usr/share/aws/emr/security/conf:/usr/share/aws/emr/security/lib/*:/usr/lib/hadoop/*:/etc/hadoop/conf:/usr/share/java/Hive-JSON-Serde/* com.amazonaws.services.glue.GlueBootstrap --conf spark.dynamicAllocation.enabled=true --conf spark.shuffle.service.enabled=true --conf spark.dynamicAllocation.minExecutors=1 --conf spark.dynamicAllocation.maxExecutors=1 --conf spark.executor.memory=10g --conf spark.driver.memory=10g --conf spark.network.timeout=600 --batch-table dlx-r360plus-redaction-batch-metadata-dev --region us-east-1  --destination-bucket dlx-r360plus-redaction-ingestion-dev --TEXTRACT_QUOTA_TPS 100 --inventory-bucket dlx-r360plus-redaction-ingestion-dev --internal-lib-urls https://prod-us-east-1-package-distribution-artifacts-bucket.s3.amazonaws.com/003/Glue5.0/aws-glue-dataplane-python/java17/5.0.1197/Zh2Mrr-AWSGlueDataplanePython-5.0.1197.py.zip?[REDACTED],https://prod-us-east-1-package-distribution-artifacts-bucket.s3.amazonaws.com/003/Glue5.0/aws-glue-di-libs/java17/5.0.1197/59Exl7-aws-glue-di-package-5.0.1197.jar?[REDACTED],https://prod-us-east-1-package-distribution-artifacts-bucket.s3.amazonaws.com/003/Glue5.0/AwsGlueMLLibsPython/java17/5.0.696/ER7jN0-AwsGlueMLLibs.py.zip?[REDACTED],https://prod-us-east-1-package-distribution-artifacts-bucket.s3.amazonaws.com/003/Glue5.0/AwsGlueMLLibs/java17/5.0.696/J0AfUF-AwsGlueMLLibs.jar?[REDACTED]  --JOB_ID j_20cbec5ad5d18462bdfdc0d010089e82897d098b33fcd70326c8a75666cee39c --account-id 697179190149  --end_at 2026-11-12T13:42:03Z --development-sse-s3 true --ACCOUNT_ID 697179190149  --manifest-prefix test-1104/ --inventory-checksum b1f88ae210e6f8ab2573b9b25eb1f46b46bb4fb3c955b1fa8a645498e30b28c7 --inventory-key xml-manifest/20261104T123317Z-923bd9bea810/inventory.xml --JOB_NAME dlx-r360plus-batch-ingestion-glue-dev  --development-skip-audit true  --batch-size 100 --inventory-version 9blh0HJhwcD1ybuWNB2WhWrICiuN_Ncf --glue-di-packages-correlation-ids 20261109-174434_,20261109-174434_,6543590708,6543590708 --TEXTRACT_RATE_CONTROL_TABLE dlx-r360plus-redaction-TextractRateControl-dev --extra-py-files s3://dlx-r360plus-redaction-ingestion-dev/libs/dev/ingestion.zip --IMAGE_TRACKING_TABLE dlx-r360plus-redaction-image-metadata-dev  --JOB_RUN_ID jr_333a142b4ab810f62c88a515f0c28143ab10dabc88ad43d2f34ffb7e3955608a --additional-python-modules jsonschema[format]==4.25.1,pg8000==1.31.6,referencing==0.36.2 --scriptLocation s3://dlx-r360plus-redaction-ingestion-dev/scripts/dev/spark_job.py --tenant-internal glue --start_at 2026-11-12T12:42:03Z
-Fri Nov 13 07:28:49 UTC 2026
-Preparing ...
+pipeline:
+  name: Build Redaction Batch Publishing
+  identifier: Build_Redaction_Batch_Publishing
+  projectIdentifier: RaaS
+  orgIdentifier: Payments
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: BitbucketCloud
+        repoName: raas-pciredactionbackend
+        build: <+input>
+  stages:
+    - stage:
+        name: Build
+        identifier: Build
+        type: CI
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: account.prodk8sdelegate4xlarge
+              namespace: harness-delegate-ng
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Pytest Unit Test
+                  identifier: pytest_unit_test
+                  spec:
+                    connectorRef: dockerhub
+                    image: python:3.12
+                    shell: Bash
+                    command: |-
+                      apt-get update && \
+                        apt-get install -y zip unzip && \
+                        apt-get clean;
+
+                      cd lambda/<+pipeline.variables.moduleName>/tests
+                      echo "Execute setup environment script ..."
+                      . setup-env.sh setupjava
+                      pip list
+                      pytest --ignore=bdd --junitxml=junitresult.xml
+
+                      set +e
+                      if [ -d bdd ]; then
+                        bdd_test_output=$(pytest bdd --junitxml=<+pipeline.variables.TestResultsFileName>)
+                        bdd_test_exitcd=$?
+                      else
+                        cp junitresult.xml <+pipeline.variables.TestResultsFileName>
+                        bdd_test_exitcd=0
+                      fi
+                      set -e
+
+                      VortexFilename="result.`date +"%Y.%m.%d-%H.%M.%S"`.xml"
+                      cp "<+pipeline.variables.TestResultsFileName>" $VortexFilename
+
+                      ArchiveName="RaaS_<+pipeline.variables.ProjectName>_PreDeploy.zip"
+                      echo "Adding '<+pipeline.variables.TestResultsFileName>' to archive: $ArchiveName"
+                      zip $ArchiveName "<+pipeline.variables.TestResultsFileName>"
+
+                      echo "Uploading archive to Report Portal (<+variable.ReportPortalImportUrl>)"
+                      AccessToken="<+secrets.getValue("account.ReportPortalHarnessAccessToken")>"
+                      # curl -F "file=@$ArchiveName" -H "Authorization: Bearer $AccessToken" "<+variable.ReportPortalImportUrl>" 
+
+                      curl -sO "https://artifacts.deluxe.com/artifactory/PyPI-Local/ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz" -H "Authorization: <+secrets.getValue("account.JFrog_Cloud_API_Token")>"
+                      tar -xzf ./ZephyrUpload-<+variable.ZephyrUploadVersion>.tar.gz
+                      cd ./ZephyrUpload-<+variable.ZephyrUploadVersion>
+                      pip3 install -r ./ZephyrUpload/requirements.txt
+                      python3 ZephyrUpload "Receivables as a Service (RaaS)\Raas\Automated Pre-Deploy\RaaS-Redaction" -type All -features "../" -junit "../$VortexFilename" -auth "<+secrets.getValue("raas_zephyr_token")>" -userid "<+secrets.getValue("raas_zephyr_userid")>" -noname
+                      cd ..
+
+                      if [ $bdd_test_exitcd -ne 0 ]
+                      then 
+                        echo $bdd_test_output
+                        exit $bdd_test_exitcd
+                      fi                                        
+                    reports:
+                      type: JUnit
+                      spec:
+                        paths:
+                          - "**/*.xml"
+                  when:
+                    stageStatus: Success
+                  failureStrategies: []
+              - parallel:
+                  - stepGroup:
+                      name: CxOne Scan
+                      identifier: CxOne_Scan
+                      template:
+                        templateRef: account.CxOne_Scan
+                        versionLabel: 1.0.3
+                        templateInputs:
+                          variables:
+                            - name: SkipScan
+                              type: String
+                              default: "Yes"
+                              value: "Yes"
+                            - name: MemoryLimit
+                              type: String
+                              default: 1G
+                              value: <+input>.default(1G).allowedValues(1G,2G,4G,8G,500Mi)
+                            - name: ProjectName
+                              type: String
+                              value: deluxe-development/RaaS/<+<+pipeline.properties.ci.codebase.repoName>.toLowerCase()>
+                            - name: EnforcePolicy
+                              type: String
+                              value: "Yes"
+                            - name: SkipScaScan
+                              type: String
+                              value: "Yes"
+                  - stepGroup:
+                      name: SonarQube Scan
+                      identifier: SonarQube_Scan
+                      steps:
+                        - step:
+                            type: Run
+                            name: SonarQube Run
+                            identifier: SonarQube_Run
+                            spec:
+                              connectorRef: dockerhub
+                              image: sonarsource/sonar-scanner-cli
+                              shell: Sh
+                              command: sonar-scanner -Dsonar.projectKey="RaaS-<+pipeline.properties.ci.codebase.repoName>" -Dsonar.host.url="https://sonarqube.deluxe.com" -Dsonar.login="<+secrets.getValue("account.sonarqube_access_token")>" -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info -Dsonar.branch.name=<+codebase.branch>
+                              resources:
+                                limits:
+                                  memory: 4G
+                        - step:
+                            name: SonarQube Step
+                            identifier: SonarQube_Step
+                            template:
+                              templateRef: account.SonarQube_Step
+                              versionLabel: 1.0.0
+                              gitBranch: develop
+                              templateInputs:
+                                type: Sonarqube
+                                spec:
+                                  tool:
+                                    project_key: RaaS-<+pipeline.properties.ci.codebase.repoName>
+              - step:
+                  type: Run
+                  name: ArchiveSource
+                  identifier: ArchiveSource
+                  spec:
+                    connectorRef: artifactorydeluxecom
+                    image: dotnet/sdk:10.0
+                    shell: Bash
+                    command: |-
+                      apt-get update
+                      apt-get install -y zip
+                      apt-get install -y rsync
+
+                      git diff --name-only HEAD HEAD~1
+
+                      export package_version=<+<+codebase.branch>.replaceAll("/","-")>.<+pipeline.variables.packageVersion>.<+pipeline.sequenceId>                      
+                      find lambda/<+pipeline.variables.moduleName>/src -name '*.py' -exec sed -i "/VERSION_NUMBER=/c\VERSION_NUMBER=\"${package_version}\"" {} \;
+                      echo "Set package version to ${package_version}"
+
+                      export packaged_file="<+pipeline.variables.moduleName>-$package_version.zip"
+                      pushd lambda/<+pipeline.variables.moduleName>/src/
+
+                      echo "Copying libs to lambda source code ..."
+                      if [ -d "../tests/libs" ]; then
+                          echo "Copying libs to lambda source code ..."
+                          rsync -r --exclude='*/__pycache__/' ../tests/libs/ ./
+                      else
+                          echo "tests/libs directory not found. Skipping library copy for now."
+                      fi
+
+                      echo "Archiving lambda source code ..."
+                      zip -r --move --test ../../../$packaged_file ./;
+                      popd
+
+                      echo "Package file $packaged_file is ready to be pushed into Artifactory!"
+                    outputVariables:
+                      - name: packaged_file
+                      - name: package_version
+                  when:
+                    stageStatus: Success
+                  failureStrategies: []
+              - step:
+                  type: ArtifactoryUpload
+                  name: PushArtifactory
+                  identifier: PushArtifactory
+                  spec:
+                    connectorRef: account.artifactoryconnector
+                    target: <+pipeline.variables.artifactoryRepo>/<+pipeline.variables.frameworkName>/
+                    sourcePath: ./<+steps.ArchiveSource.output.outputVariables.packaged_file>
+                  when:
+                    stageStatus: Success
+                  failureStrategies: []
+          serviceDependencies:
+            - identifier: dind
+              name: dind
+              type: Service
+              spec:
+                connectorRef: artifactorydeluxecom
+                image: docker:dind
+                privileged: true
+          sharedPaths:
+            - /var/run
+            - /shared/scan_results
+  variables:
+    - name: bb_repoName
+      type: String
+      description: ""
+      value: raas-pciredactionbackend
+    - name: packageVersion
+      type: String
+      description: ""
+      value: "0.2"
+    - name: moduleName
+      type: String
+      description: ""
+      value: batch-publishing
+    - name: frameworkName
+      type: String
+      description: ""
+      value: RaaS-Redaction
+    - name: artifactoryRepo
+      type: String
+      description: ""
+      value: deluxe-raas-dl-local
+    - name: ProjectName
+      type: String
+      value: BatchPublishing
+    - name: TestResultsFileName
+      type: String
+      value: junitresults-bdd.xml
