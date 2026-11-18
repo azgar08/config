@@ -1,183 +1,25 @@
+#Assume the TF Role
+case <+pipeline.variables.env_delegate> in
+    dev-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
+        ;;
+    nonprod-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
+        ;;
+    prod-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
+        ;;
+    *)
+        echo "Unable to assume role!"
+esac
+export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
+export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
+export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
+aws sts get-caller-identity
 
-set -eu
+set -euo pipefail
 
-HOST="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.HOST>"
-PORT="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.PORT>"
-ADMIN_USER="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.USERNAME>"
+GENERATED_PASSWORD=$(openssl rand -base64 32)
 
-ADMIN_PASSWORD="<+pipeline.variables.admin_password_secret>"
-
-NEW_DB="<+pipeline.variables.database_name>"
-NEW_USER="<+pipeline.variables.database_user>"
-
-NEW_PASSWORD="<+pipeline.stages.Generate_Password.spec.execution.steps.Generate_Password.output.outputVariables.GENERATED_PASSWORD>"
-
-export PGHOST="$HOST"
-export PGPORT="$PORT"
-export PGUSER="$ADMIN_USER"
-export PGPASSWORD="$ADMIN_PASSWORD"
-
-# Connect to postgres for user/database admin tasks
-export PGDATABASE="postgres"
-
-PSQL="psql -X -v ON_ERROR_STOP=1"
-
-echo "Creating or updating database user..."
-
-$PSQL <<SQL
-DO \$\$
-BEGIN
-   IF NOT EXISTS (
-      SELECT 1
-      FROM pg_roles
-      WHERE rolname='${NEW_USER}'
-   ) THEN
-      CREATE USER ${NEW_USER}
-      LOGIN
-      PASSWORD '${NEW_PASSWORD}';
-   ELSE
-      ALTER USER ${NEW_USER}
-      PASSWORD '${NEW_PASSWORD}';
-   END IF;
-END
-\$\$;
-SQL
-
-echo "Checking if database exists..."
-
-DB_EXISTS=$(
-$PSQL -tAc "
-SELECT count(*)
-FROM pg_database
-WHERE datname='${NEW_DB}'
-"
-)
-
-if [ "$DB_EXISTS" = "0" ]; then
-    echo "Creating database ${NEW_DB} with owner ${NEW_USER}"
-    $PSQL -c "CREATE DATABASE ${NEW_DB} OWNER ${NEW_USER};"
-else
-    echo "Database ${NEW_DB} already exists"
-    echo "Updating database owner to ${NEW_USER}"
-    $PSQL -c "ALTER DATABASE ${NEW_DB} OWNER TO ${NEW_USER};"
-fi
-
-# Switch to application DB
-export PGDATABASE="${NEW_DB}"
-
-echo "Applying full database permissions..."
-
-$PSQL <<SQL
-
--- Database ownership
-ALTER DATABASE ${NEW_DB} OWNER TO ${NEW_USER};
-
--- Schema ownership
-ALTER SCHEMA public OWNER TO ${NEW_USER};
-
--- Full access to existing tables
-GRANT ALL PRIVILEGES
-ON ALL TABLES IN SCHEMA public
-TO ${NEW_USER};
-
--- Full access to existing sequences
-GRANT ALL PRIVILEGES
-ON ALL SEQUENCES IN SCHEMA public
-TO ${NEW_USER};
-
--- Future tables created by admin user
-ALTER DEFAULT PRIVILEGES FOR ROLE ${ADMIN_USER}
-IN SCHEMA public
-GRANT ALL PRIVILEGES ON TABLES TO ${NEW_USER};
-
--- Future sequences created by admin user
-ALTER DEFAULT PRIVILEGES FOR ROLE ${ADMIN_USER}
-IN SCHEMA public
-GRANT ALL PRIVILEGES ON SEQUENCES TO ${NEW_USER};
-
-SQL
-
-echo "Revoking access to system databases..."
-
-$PSQL -d postgres -c "REVOKE CONNECT ON DATABASE postgres FROM ${NEW_USER};" || true
-$PSQL -d postgres -c "REVOKE CONNECT ON DATABASE template1 FROM ${NEW_USER};" || true
-
-echo "Creating tables..."
-
-$PSQL <<SQL
-
-CREATE TABLE IF NOT EXISTS image_inventory (
-    image_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    image_path TEXT NOT NULL UNIQUE,
-    payment_source VARCHAR(100) NOT NULL,
-    deposit_date DATE NOT NULL,
-    bank_id VARCHAR(100) NOT NULL,
-    workgroup_id VARCHAR(100) NOT NULL,
-    ingestion_cycle_id BIGINT NOT NULL,
-    created_ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS processing_batch (
-    batch_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    ingestion_cycle_id BIGINT NOT NULL,
-    start_image_id BIGINT NOT NULL,
-    end_image_id BIGINT NOT NULL,
-    image_count INTEGER NOT NULL,
-    manifest_s3_path VARCHAR(1000) NOT NULL,
-    batch_status VARCHAR(50) NOT NULL,
-    approved_by VARCHAR(200),
-    approval_comments TEXT,
-    created_ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    review_completed_ts TIMESTAMP,
-    publish_completed_ts TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS image_processing_result (
-    image_id BIGINT PRIMARY KEY,
-    batch_id BIGINT NOT NULL,
-    processing_status VARCHAR(50) NOT NULL,
-    review_status VARCHAR(50),
-    redaction_method VARCHAR(20) NOT NULL,
-    approved_redacted_image_path TEXT,
-    reviewed_by VARCHAR(200),
-    processed_ts TIMESTAMP,
-    reviewed_ts TIMESTAMP,
-    CONSTRAINT fk_image_processing_result_image
-        FOREIGN KEY (image_id)
-        REFERENCES image_inventory(image_id)
-);
-
-CREATE TABLE IF NOT EXISTS image_redaction_detection (
-    detection_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    image_id BIGINT NOT NULL,
-    detection_type VARCHAR(50) NOT NULL,
-    redaction_source VARCHAR(20) NOT NULL,
-    redacted_by VARCHAR(200),
-    confidence NUMERIC(5,2),
-    bbox_x INTEGER NOT NULL,
-    bbox_y INTEGER NOT NULL,
-    bbox_width INTEGER NOT NULL,
-    bbox_height INTEGER NOT NULL,
-    original_text_hash VARCHAR(128),
-    created_ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_image_inventory_ingestion_cycle
-ON image_inventory (ingestion_cycle_id);
-
-CREATE INDEX IF NOT EXISTS idx_processing_batch_status
-ON processing_batch (batch_status);
-
-CREATE INDEX IF NOT EXISTS idx_processing_result_batch
-ON image_processing_result (batch_id);
-
-CREATE INDEX IF NOT EXISTS idx_redaction_detection_image
-ON image_redaction_detection (image_id);
-
-SQL
-
-echo "========================================"
-echo "Database setup completed successfully"
-echo "Database : ${NEW_DB}"
-echo "User     : ${NEW_USER}"
-echo "========================================"
+echo "Password generated"
+echo "GENERATED_PASSWORD=$GENERATED_PASSWORD"
