@@ -1,25 +1,26 @@
-#Assume the TF Role
-case <+pipeline.variables.env_delegate> in
-    dev-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-        ;;
-    nonprod-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-        ;;
-    prod-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-        ;;
-    *)
-        echo "Unable to assume role!"
-esac
-export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
-aws sts get-caller-identity
+# AWS Secrets Manager secret name
+SECRET_ID="<+pipeline.variables.database_user_secret_name>"
 
-set -euo pipefail
+echo "Checking existing password in AWS Secrets Manager..."
 
-GENERATED_PASSWORD=$(openssl rand -base64 32)
+if aws secretsmanager describe-secret \
+    --secret-id "$SECRET_ID" >/dev/null 2>&1; then
 
-echo "Password generated"
+    echo "Existing secret found. Reusing password."
+
+    GENERATED_PASSWORD=$(aws secretsmanager get-secret-value \
+        --secret-id "$SECRET_ID" \
+        --query SecretString \
+        --output text)
+
+else
+
+    echo "Secret not found. Generating new password."
+
+    GENERATED_PASSWORD=$(openssl rand -base64 32)
+
+    echo "New password generated."
+
+fi
+
 echo "GENERATED_PASSWORD=$GENERATED_PASSWORD"
