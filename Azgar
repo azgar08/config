@@ -1,643 +1,174 @@
-pipeline:
-  name: Build Redaction DataBase
-  identifier: Build_Redaction_DataBase
-  projectIdentifier: RaaS
-  orgIdentifier: Payments
-  tags: {}
-  stages:
-    - stage:
-        name: Read Existing RDS Secret
-        identifier: Read_Existing_RDS_Secret
-        description: ""
-        type: Custom
-        spec:
-          execution:
-            steps:
-              - step:
-                  type: ShellScript
-                  name: Read Existing RDS Secret
-                  identifier: Read_Existing_RDS_Secret
-                  spec:
-                    shell: Bash
-                    executionTarget: {}
-                    source:
-                      type: Inline
-                      spec:
-                        script: |
-                          #Assume the TF Role
-                          case <+pipeline.variables.env_delegate> in
-                              dev-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                  ;;
-                              nonprod-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                  ;;
-                              prod-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                  ;;
-                              *)
-                                  echo "Unable to assume role!"
-                          esac
-                          export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                          export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                          export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
-                          aws sts get-caller-identity
-                          set -euo pipefail
-
-                          SECRET_NAME="dlx-r360plus-us-east-1-microservice-rds-secret-<+pipeline.variables.environment>"
-                          REGION="<+pipeline.variables.aws_region>"
-
-                          SECRET_JSON=$(
-                          aws secretsmanager get-secret-value \
-                            --secret-id "$SECRET_NAME" \
-                            --region "$REGION" \
-                            --query SecretString \
-                            --output text
-                          )
-
-                          HOST=$(echo "$SECRET_JSON" | jq -r '.host')
-                          PORT=$(echo "$SECRET_JSON" | jq -r '.port')
-                          USERNAME=$(echo "$SECRET_JSON" | jq -r '.username')
-                          PASSWORD=$(echo "$SECRET_JSON" | jq -r '.password')
-                          CLUSTER_ID=$(echo "$SECRET_JSON" | jq -r '.dbClusterIdentifier')
-
-                          echo "HOST=$HOST"
-                          echo "PORT=$PORT"
-                          echo "USERNAME=$USERNAME"
-                          echo "CLUSTER_ID=$CLUSTER_ID"
-                    environmentVariables: []
-                    outputVariables:
-                      - name: HOST
-                        type: String
-                        value: HOST
-                      - name: PORT
-                        type: String
-                        value: PORT
-                      - name: USERNAME
-                        type: String
-                        value: USERNAME
-                      - name: CLUSTER_ID
-                        type: String
-                        value: CLUSTER_ID
-                  timeout: 1h
-        tags: {}
-        when:
-          pipelineStatus: Success
-        delegateSelectors:
-          - <+pipeline.variables.env_delegate>
-    - stage:
-        name: Snapshot Cluster
-        identifier: Snapshot_Cluster
-        description: ""
-        type: Custom
-        spec:
-          execution:
-            steps:
-              - step:
-                  type: ShellScript
-                  name: Snapshot Cluster
-                  identifier: Snapshot_Cluster
-                  spec:
-                    shell: Bash
-                    executionTarget: {}
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          #Assume the TF Role
-                          case <+pipeline.variables.env_delegate> in
-                              dev-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                  ;;
-                              nonprod-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                  ;;
-                              prod-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                  ;;
-                              *)
-                                  echo "Unable to assume role!"
-                          esac
-                          export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                          export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                          export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
-                          aws sts get-caller-identity
-                          set -euo pipefail
-
-                          REGION="<+pipeline.variables.aws_region>"
-
-                          CLUSTER_ID="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.CLUSTER_ID>"
-
-                          SNAPSHOT_ID="redaction-<+pipeline.variables.environment>-snapshot-$(date +%Y%m%d-%H%M%S)"
-
-                          echo "Creating snapshot $SNAPSHOT_ID"
-
-                          aws rds create-db-cluster-snapshot \
-                            --region "$REGION" \
-                            --db-cluster-identifier "$CLUSTER_ID" \
-                            --db-cluster-snapshot-identifier "$SNAPSHOT_ID"
-
-                          aws rds wait db-cluster-snapshot-available \
-                            --region "$REGION" \
-                            --db-cluster-snapshot-identifier "$SNAPSHOT_ID"
-
-                          echo "Snapshot complete"
-                          echo "SNAPSHOT_ID=$SNAPSHOT_ID"
-                    environmentVariables: []
-                    outputVariables:
-                      - name: SNAPSHOT_ID
-                        type: String
-                        value: SNAPSHOT_ID
-                  timeout: 1h
-        tags: {}
-        delegateSelectors:
-          - <+pipeline.variables.env_delegate>
-    - stage:
-        name: APPROVAL
-        identifier: APPROVAL
-        description: ""
-        type: Approval
-        spec:
-          execution:
-            steps:
-              - step:
-                  name: APPROVAL
-                  identifier: APPROVAL
-                  type: HarnessApproval
-                  timeout: 1d
-                  spec:
-                    approvalMessage: |-
-                      Please review the following information
-                      and approve the pipeline progression
-                    includePipelineExecutionHistory: true
-                    approvers:
-                      minimumCount: 1
-                      disallowPipelineExecutor: false
-                      userGroups:
-                        - Harness_RaaS_DevOps
-                        - R360_Plus_SRE
-                    isAutoRejectEnabled: false
-                    approverInputs: []
-        tags: {}
-        delegateSelectors:
-          - <+pipeline.variables.env_delegate>
-    - stage:
-        name: Generate Password
-        identifier: Generate_Password
-        description: ""
-        type: Custom
-        spec:
-          execution:
-            steps:
-              - step:
-                  type: ShellScript
-                  name: "Generate Password "
-                  identifier: Generate_Password
-                  spec:
-                    shell: Bash
-                    executionTarget: {}
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          #Assume the TF Role
-                          case <+pipeline.variables.env_delegate> in
-                              dev-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                  ;;
-                              nonprod-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                  ;;
-                              prod-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                  ;;
-                              *)
-                                  echo "Unable to assume role!"
-                          esac
-                          export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                          export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                          export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
-                          aws sts get-caller-identity
-
-                          set -euo pipefail
-
-                          # AWS Secrets Manager secret name
-                          SECRET_ID="redaction-database-credentials-<+pipeline.variables.environment>"
-
-                          echo "Checking existing password in AWS Secrets Manager..."
-
-                          if aws secretsmanager describe-secret \
-                              --secret-id "$SECRET_ID" >/dev/null 2>&1; then
-
-                              echo "Existing secret found. Reusing password."
-
-                              GENERATED_PASSWORD=$(aws secretsmanager get-secret-value \
-                                  --secret-id "$SECRET_ID" \
-                                  --query SecretString \
-                                  --output text)
-
-                          else
-
-                              echo "Secret not found. Generating new password."
-
-                              GENERATED_PASSWORD=$(openssl rand -base64 32)
-
-                              echo "New password generated."
-
-                          fi
-
-                          echo "GENERATED_PASSWORD=$GENERATED_PASSWORD"
-                    environmentVariables: []
-                    outputVariables:
-                      - name: GENERATED_PASSWORD
-                        type: String
-                        value: GENERATED_PASSWORD
-                  timeout: 10m
-        tags: {}
-        delegateSelectors:
-          - <+pipeline.variables.env_delegate>
-    - stage:
-        name: Create Database and User
-        identifier: Create_Database_and_User
-        description: ""
-        type: CI
-        spec:
-          cloneCodebase: false
-          caching:
-            enabled: true
-            override: true
-          infrastructure:
-            type: KubernetesDirect
-            spec:
-              connectorRef: account.prodk8sdelegate4xlarge
-              namespace: harness-delegate-ng
-              automountServiceAccountToken: true
-              nodeSelector: {}
-              os: Linux
-          execution:
-            steps:
-              - step:
-                  type: Run
-                  name: Create Database and User
-                  identifier: Create_Database_and_User
-                  spec:
-                    connectorRef: account.dockerhub
-                    image: alpine/psql:latest
-                    shell: Sh
-                    command: |-
-                      set -eu
-
-                      HOST="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.HOST>"
-                      PORT="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.PORT>"
-                      ADMIN_USER="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.USERNAME>"
-
-                      ADMIN_PASSWORD="<+pipeline.variables.admin_password_secret>"
-
-                      NEW_DB="<+pipeline.variables.database_name>"
-                      NEW_USER="<+pipeline.variables.database_user>"
-
-                      NEW_PASSWORD="<+pipeline.stages.Generate_Password.spec.execution.steps.Generate_Password.output.outputVariables.GENERATED_PASSWORD>"
-
-                      export PGHOST="$HOST"
-                      export PGPORT="$PORT"
-                      export PGUSER="$ADMIN_USER"
-                      export PGPASSWORD="$ADMIN_PASSWORD"
-
-                      # Connect to postgres for user/database admin tasks
-                      export PGDATABASE="postgres"
-
-                      PSQL="psql -X -v ON_ERROR_STOP=1"
-
-                      echo "Creating or updating database user..."
-
-                      $PSQL <<SQL
-                      DO \$\$
-                      BEGIN
-                         IF NOT EXISTS (
-                            SELECT 1
-                            FROM pg_roles
-                            WHERE rolname='${NEW_USER}'
-                         ) THEN
-                            CREATE USER ${NEW_USER}
-                            LOGIN
-                            PASSWORD '${NEW_PASSWORD}';
-                         ELSE
-                            ALTER USER ${NEW_USER}
-                            PASSWORD '${NEW_PASSWORD}';
-                         END IF;
-                      END
-                      \$\$;
-                      SQL
-
-                      echo "Checking if database exists..."
-
-                      DB_EXISTS=$(
-                      $PSQL -tAc "
-                      SELECT count(*)
-                      FROM pg_database
-                      WHERE datname='${NEW_DB}'
-                      "
-                      )
-
-                      if [ "$DB_EXISTS" = "0" ]; then
-                          echo "Creating database ${NEW_DB} with owner ${NEW_USER}"
-                          $PSQL -c "CREATE DATABASE ${NEW_DB} OWNER ${NEW_USER};"
-                      else
-                          echo "Database ${NEW_DB} already exists"
-                          echo "Updating database owner to ${NEW_USER}"
-                          $PSQL -c "ALTER DATABASE ${NEW_DB} OWNER TO ${NEW_USER};"
-                      fi
-
-                      # Switch to application DB
-                      export PGDATABASE="${NEW_DB}"
-
-                      echo "Applying full database permissions..."
-
-                      $PSQL <<SQL
-
-                      -- Database ownership
-                      ALTER DATABASE ${NEW_DB} OWNER TO ${NEW_USER};
-
-                      -- Schema ownership
-                      ALTER SCHEMA public OWNER TO ${NEW_USER};
-
-                      -- Full access to existing tables
-                      GRANT ALL PRIVILEGES
-                      ON ALL TABLES IN SCHEMA public
-                      TO ${NEW_USER};
-
-                      -- Full access to existing sequences
-                      GRANT ALL PRIVILEGES
-                      ON ALL SEQUENCES IN SCHEMA public
-                      TO ${NEW_USER};
-
-                      -- Future tables created by admin user
-                      ALTER DEFAULT PRIVILEGES FOR ROLE ${ADMIN_USER}
-                      IN SCHEMA public
-                      GRANT ALL PRIVILEGES ON TABLES TO ${NEW_USER};
-
-                      -- Future sequences created by admin user
-                      ALTER DEFAULT PRIVILEGES FOR ROLE ${ADMIN_USER}
-                      IN SCHEMA public
-                      GRANT ALL PRIVILEGES ON SEQUENCES TO ${NEW_USER};
-
-                      SQL
-
-                      echo "Revoking access to system databases..."
-
-                      $PSQL -d postgres -c "REVOKE CONNECT ON DATABASE postgres FROM ${NEW_USER};" || true
-                      $PSQL -d postgres -c "REVOKE CONNECT ON DATABASE template1 FROM ${NEW_USER};" || true
-
-                      echo "Creating tables..."
-
-                      $PSQL <<SQL
-
-                      CREATE TABLE IF NOT EXISTS image_inventory (
-                          image_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                          image_path TEXT NOT NULL UNIQUE,
-                          payment_source VARCHAR(100) NOT NULL,
-                          deposit_date DATE NOT NULL,
-                          bank_id VARCHAR(100) NOT NULL,
-                          workgroup_id VARCHAR(100) NOT NULL,
-                          ingestion_cycle_id BIGINT NOT NULL,
-                          created_ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                      );
-
-                      CREATE TABLE IF NOT EXISTS processing_batch (
-                          batch_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                          ingestion_cycle_id BIGINT NOT NULL,
-                          start_image_id BIGINT NOT NULL,
-                          end_image_id BIGINT NOT NULL,
-                          image_count INTEGER NOT NULL,
-                          manifest_s3_path VARCHAR(1000) NOT NULL,
-                          batch_status VARCHAR(50) NOT NULL,
-                          approved_by VARCHAR(200),
-                          approval_comments TEXT,
-                          created_ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                          review_completed_ts TIMESTAMP,
-                          publish_completed_ts TIMESTAMP
-                      );
-
-                      CREATE TABLE IF NOT EXISTS image_processing_result (
-                          image_id BIGINT PRIMARY KEY,
-                          batch_id BIGINT NOT NULL,
-                          processing_status VARCHAR(50) NOT NULL,
-                          review_status VARCHAR(50),
-                          redaction_method VARCHAR(20) NOT NULL,
-                          approved_redacted_image_path TEXT,
-                          reviewed_by VARCHAR(200),
-                          processed_ts TIMESTAMP,
-                          reviewed_ts TIMESTAMP,
-                          CONSTRAINT fk_image_processing_result_image
-                              FOREIGN KEY (image_id)
-                              REFERENCES image_inventory(image_id)
-                      );
-
-                      CREATE TABLE IF NOT EXISTS image_redaction_detection (
-                          detection_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                          image_id BIGINT NOT NULL,
-                          detection_type VARCHAR(50) NOT NULL,
-                          redaction_source VARCHAR(20) NOT NULL,
-                          redacted_by VARCHAR(200),
-                          confidence NUMERIC(5,2),
-                          bbox_x INTEGER NOT NULL,
-                          bbox_y INTEGER NOT NULL,
-                          bbox_width INTEGER NOT NULL,
-                          bbox_height INTEGER NOT NULL,
-                          original_text_hash VARCHAR(128),
-                          created_ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                      );
-
-                      CREATE INDEX IF NOT EXISTS idx_image_inventory_ingestion_cycle
-                      ON image_inventory (ingestion_cycle_id);
-
-                      CREATE INDEX IF NOT EXISTS idx_processing_batch_status
-                      ON processing_batch (batch_status);
-
-                      CREATE INDEX IF NOT EXISTS idx_processing_result_batch
-                      ON image_processing_result (batch_id);
-
-                      CREATE INDEX IF NOT EXISTS idx_redaction_detection_image
-                      ON image_redaction_detection (image_id);
-
-                      SQL
-
-                      echo "========================================"
-                      echo "Database setup completed successfully"
-                      echo "Database : ${NEW_DB}"
-                      echo "User     : ${NEW_USER}"
-                      echo "========================================"
-    - stage:
-        name: Create Secret Manager Secret
-        identifier: Create_Secret_Manager_Secret
-        description: ""
-        type: Custom
-        spec:
-          execution:
-            steps:
-              - step:
-                  type: ShellScript
-                  name: Create Secret Manager Secret
-                  identifier: Create_Secret_Manager_Secret
-                  spec:
-                    shell: Bash
-                    executionTarget: {}
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          #Assume the TF Role
-                          case <+pipeline.variables.env_delegate> in
-                              dev-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-                                  ;;
-                              nonprod-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-                                  ;;
-                              prod-iac-delegate)
-                                  aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-                                  ;;
-                              *)
-                                  echo "Unable to assume role!"
-                          esac
-                          export AWS_ACCESS_KEY_ID=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.AccessKeyId)
-                          export AWS_SECRET_ACCESS_KEY=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SecretAccessKey)
-                          export AWS_SESSION_TOKEN=$(echo $aws_credentials_json | jq --exit-status --raw-output .Credentials.SessionToken)
-                          aws sts get-caller-identity
-
-                          set -euo pipefail
-
-                          SECRET_NAME="redaction-database-credentials-<+pipeline.variables.environment>"
-
-                          HOST="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.HOST>"
-                          PORT="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.PORT>"
-                          GENERATED_PASSWORD="<+pipeline.stages.Generate_Password.spec.execution.steps.Generate_Password.output.outputVariables.GENERATED_PASSWORD>"
-
-                          SECRET_JSON=$(cat <<EOF
-                          {
-                            "engine":"postgres",
-                            "host":"${HOST}",
-                            "port":"${PORT}",
-                            "database":"<+pipeline.variables.database_name>",
-                            "username":"<+pipeline.variables.database_user>",
-                            "password":"${GENERATED_PASSWORD}"
-                          }
-                          EOF
-                          )
-
-                          if aws secretsmanager describe-secret \
-                             --secret-id "$SECRET_NAME" \
-                             --region "<+pipeline.variables.aws_region>" \
-                             >/dev/null 2>&1; then
-
-                            aws secretsmanager put-secret-value \
-                               --secret-id "$SECRET_NAME" \
-                               --secret-string "$SECRET_JSON" \
-                               --region "<+pipeline.variables.aws_region>"
-
-                          else
-
-                            aws secretsmanager create-secret \
-                               --name "$SECRET_NAME" \
-                               --secret-string "$SECRET_JSON" \
-                               --region "<+pipeline.variables.aws_region>"
-
-                          fi
-                    environmentVariables: []
-                    outputVariables: []
-                  timeout: 10m
-              - step:
-                  type: ShellScript
-                  name: Execution Summary
-                  identifier: Execution_Summary
-                  spec:
-                    shell: Bash
-                    executionTarget: {}
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          set -euo pipefail
-
-                          echo
-                          echo "=========================================="
-                          echo " REDACTION DB BUILD COMPLETED SUCCESSFULLY"
-                          echo "=========================================="
-                          echo
-
-                          echo "Environment:"
-                          echo "<+pipeline.variables.environment>"
-
-                          echo
-                          echo "Snapshot:"
-                          echo "<+pipeline.stages.Snapshot_Cluster.spec.execution.steps.Snapshot_Cluster.output.outputVariables.SNAPSHOT_ID>"
-
-                          echo
-                          echo "Database:"
-                          echo "<+pipeline.variables.database_name>"
-
-                          echo
-                          echo "User:"
-                          echo "<+pipeline.variables.database_user>"
-
-                          echo
-                          echo "Secret:"
-                          echo "redaction-database-credentials-<+pipeline.variables.environment>"
-
-                          echo
-                          echo "Aurora Cluster:"
-                          echo "<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.CLUSTER_ID>"
-
-                          echo
-                          echo "Host:"
-                          echo "<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.HOST>"
-
-                          echo
-                          echo "Validation:"
-                          echo "  [OK] Snapshot Created"
-                          echo "  [OK] User Created/Updated"
-                          echo "  [OK] Database Created/Verified"
-                          echo "  [OK] Permissions Granted"
-                          echo "  [OK] Tables Verified"
-                          echo "  [OK] User Isolation Verified"
-                          echo "  [OK] Secret Updated"
-
-                          echo
-                          echo "Status:"
-                          echo "  SUCCESS"
-                          echo
-                    environmentVariables: []
-                    outputVariables: []
-                  timeout: 45m
-        tags: {}
-        when:
-          pipelineStatus: Success
-        delegateSelectors:
-          - <+pipeline.variables.env_delegate>
-  variables:
-    - name: environment
-      type: String
-      description: ""
-      required: false
-      value: <+input>.selectOneFrom(dev,qa,rc,xuat,prod)
-    - name: aws_region
-      type: String
-      description: ""
-      required: false
-      value: <+input>.default(us-east-1)
-    - name: database_name
-      type: String
-      description: ""
-      required: false
-      value: redact_service
-    - name: database_user
-      type: String
-      description: ""
-      required: false
-      value: redactservice
-    - name: env_delegate
-      type: String
-      value: <+input>.selectOneFrom(dev-iac-delegate,nonprod-iac-delegate,prod-iac-delegate)
-    - name: admin_password_secret
-      type: Secret
-      value: <+input>.selectOneFrom(microservice-rds-secret-dev)
+
+set -euo pipefail
+
+# Assume the TF Role
+case <+pipeline.variables.env_delegate> in
+    dev-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
+        ;;
+    nonprod-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
+        ;;
+    prod-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
+        ;;
+    *)
+        echo "Unable to assume role!"
+        exit 1
+        ;;
+esac
+
+export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq -er '.Credentials.AccessKeyId')
+export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq -er '.Credentials.SecretAccessKey')
+export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq -er '.Credentials.SessionToken')
+
+aws sts get-caller-identity
+
+REGION="<+pipeline.variables.aws_region>"
+SECRET_NAME="redaction-database-credentials-<+pipeline.variables.database_user>-<+pipeline.variables.environment>"
+
+HOST="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.HOST>"
+PORT="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.PORT>"
+DATABASE="<+pipeline.variables.database_name>"
+DB_USER="<+pipeline.variables.database_user>"
+
+echo "Checking AWS Secrets Manager for existing database user password..."
+
+if aws secretsmanager describe-secret \
+    --secret-id "$SECRET_NAME" \
+    --region "$REGION" >/dev/null 2>&1; then
+
+    echo "Existing secret found. Retrieving password..."
+
+    SECRET_JSON=$(aws secretsmanager get-secret-value \
+        --secret-id "$SECRET_NAME" \
+        --region "$REGION" \
+        --query SecretString \
+        --output text)
+
+    GENERATED_PASSWORD=$(echo "$SECRET_JSON" | jq -er '.password')
+
+    echo "Existing database password reused."
+
+else
+
+    echo "Secret does not exist. Generating password for new database user..."
+
+    GENERATED_PASSWORD=$(openssl rand -base64 32)
+
+    SECRET_JSON=$(jq -n \
+        --arg engine "postgres" \
+        --arg host "$HOST" \
+        --arg port "$PORT" \
+        --arg database "$DATABASE" \
+        --arg username "$DB_USER" \
+        --arg password "$GENERATED_PASSWORD" \
+        '{
+            engine: $engine,
+            host: $host,
+            port: $port,
+            database: $database,
+            username: $username,
+            password: $password
+        }')
+
+    echo "Creating database credentials secret..."
+
+    aws secretsmanager create-secret \
+        --name "$SECRET_NAME" \
+        --secret-string "$SECRET_JSON" \
+        --region "$REGION"
+
+    echo "New database credentials secret created."
+
+fi
+
+echo "GENERATED_PASSWORD=$GENERATED_PASSWORD"
+
+
+
+
+
+
+
+
+
+
+set -euo pipefail
+
+# Assume the TF Role
+case <+pipeline.variables.env_delegate> in
+    dev-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
+        ;;
+    nonprod-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
+        ;;
+    prod-iac-delegate)
+        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
+        ;;
+    *)
+        echo "Unable to assume role!"
+        exit 1
+        ;;
+esac
+
+export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq -er '.Credentials.AccessKeyId')
+export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq -er '.Credentials.SecretAccessKey')
+export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq -er '.Credentials.SessionToken')
+
+aws sts get-caller-identity
+
+set -euo pipefail
+
+REGION="<+pipeline.variables.aws_region>"
+
+SECRET_NAME="redaction-database-credentials-<+pipeline.variables.database_user>-<+pipeline.variables.environment>"
+
+HOST="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.HOST>"
+PORT="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.PORT>"
+
+DATABASE="<+pipeline.variables.database_name>"
+DB_USER="<+pipeline.variables.database_user>"
+
+GENERATED_PASSWORD="<+pipeline.stages.Generate_Password.spec.execution.steps.Generate_Password.output.outputVariables.GENERATED_PASSWORD>"
+
+echo "Checking database credentials secret..."
+
+if aws secretsmanager describe-secret \
+    --secret-id "$SECRET_NAME" \
+    --region "$REGION" >/dev/null 2>&1; then
+
+    echo "Secret already exists. Skipping creation."
+
+else
+
+    echo "Secret does not exist. Creating new secret."
+
+    SECRET_JSON=$(jq -n \
+        --arg engine "postgres" \
+        --arg host "$HOST" \
+        --arg port "$PORT" \
+        --arg database "$DATABASE" \
+        --arg username "$DB_USER" \
+        --arg password "$GENERATED_PASSWORD" \
+        '{
+            engine: $engine,
+            host: $host,
+            port: $port,
+            database: $database,
+            username: $username,
+            password: $password
+        }')
+
+    aws secretsmanager create-secret \
+        --name "$SECRET_NAME" \
+        --secret-string "$SECRET_JSON" \
+        --region "$REGION"
+
+    echo "Secret created successfully."
+
+fi
+
+echo "Secret verification completed."
+echo "Secret Name: $SECRET_NAME"
