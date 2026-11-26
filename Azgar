@@ -1,174 +1,220 @@
+# PCI Redaction – IaC Build & Deployment Runbook
 
-set -euo pipefail
+## 1. Purpose
 
-# Assume the TF Role
-case <+pipeline.variables.env_delegate> in
-    dev-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-        ;;
-    nonprod-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-        ;;
-    prod-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-        ;;
-    *)
-        echo "Unable to assume role!"
-        exit 1
-        ;;
-esac
+This document outlines the step-by-step process for deploying PCI Redaction infrastructure and application components into higher environments.
 
-export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq -er '.Credentials.AccessKeyId')
-export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq -er '.Credentials.SecretAccessKey')
-export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq -er '.Credentials.SessionToken')
+This runbook is intended for the SRE team to perform infrastructure provisioning and application deployments across environments, including RC and PROD.
 
-aws sts get-caller-identity
+It covers:
+- Redaction database creation in MS RDS.
+- Database user creation and AWS Secrets Manager integration.
+- RDS Proxy access configuration.
+- Glue VPC endpoint security group updates.
+- PCI Redaction infrastructure provisioning through Harness IaC pipelines.
+- Lambda and Glue application deployments using the master deployment pipeline.
+- S3 event notification configuration for the scanning Lambda.
 
-REGION="<+pipeline.variables.aws_region>"
-SECRET_NAME="redaction-database-credentials-<+pipeline.variables.database_user>-<+pipeline.variables.environment>"
+## 2. Deployment Prerequisites
 
-HOST="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.HOST>"
-PORT="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.PORT>"
-DATABASE="<+pipeline.variables.database_name>"
-DB_USER="<+pipeline.variables.database_user>"
+Before starting the deployment, ensure the following are available:
 
-echo "Checking AWS Secrets Manager for existing database user password..."
+- Access to the respective Harness project and pipelines.
+- Environment-specific Harness input sets.
+- Required AWS account and environment access.
+- Approved Lambda and Glue image tags.
+- Required permissions to perform manual AWS configuration activities.
+- Relevant pipeline links and deployment approvals.
 
-if aws secretsmanager describe-secret \
-    --secret-id "$SECRET_NAME" \
-    --region "$REGION" >/dev/null 2>&1; then
+## 3. Deployment Steps
 
-    echo "Existing secret found. Retrieving password..."
+### Step 1: Create the Redaction Database in MS RDS
 
-    SECRET_JSON=$(aws secretsmanager get-secret-value \
-        --secret-id "$SECRET_NAME" \
-        --region "$REGION" \
-        --query SecretString \
-        --output text)
+A new database must be created for PCI Redaction in the existing MS RDS cluster.
 
-    GENERATED_PASSWORD=$(echo "$SECRET_JSON" | jq -er '.password')
+**Execution:**
 
-    echo "Existing database password reused."
+1. Navigate to the Redaction Database Build pipeline in Harness.
+2. Select the appropriate environment-specific input set.
+3. Verify the environment and database configuration.
+4. Execute the pipeline.
+5. Validate that the database has been successfully created in the respective MS RDS cluster.
 
-else
+**Pipeline:** [Insert Database Build Pipeline Link]
 
-    echo "Secret does not exist. Generating password for new database user..."
+**Important:** Use the corresponding environment-specific input set when executing the pipeline.
 
-    GENERATED_PASSWORD=$(openssl rand -base64 32)
+### Step 2: Configure Database User Access – RC and PROD Only
 
-    SECRET_JSON=$(jq -n \
-        --arg engine "postgres" \
-        --arg host "$HOST" \
-        --arg port "$PORT" \
-        --arg database "$DATABASE" \
-        --arg username "$DB_USER" \
-        --arg password "$GENERATED_PASSWORD" \
-        '{
-            engine: $engine,
-            host: $host,
-            port: $port,
-            database: $database,
-            username: $username,
-            password: $password
-        }')
+<font color="red">Applicable only to RC and PROD environments.</font>
 
-    echo "Creating database credentials secret..."
+Once Step 1 is completed, the database user will be created automatically, and the credentials will be pushed to AWS Secrets Manager.
 
-    aws secretsmanager create-secret \
-        --name "$SECRET_NAME" \
-        --secret-string "$SECRET_JSON" \
-        --region "$REGION"
+**Secret name:** `xyz` (replace with the actual environment-specific secret naming convention).
 
-    echo "New database credentials secret created."
+**Additional manual activity:**
 
-fi
+The newly created database user must be granted access through the existing AWS RDS Proxy configuration.
 
-echo "GENERATED_PASSWORD=$GENERATED_PASSWORD"
+Execution steps:
 
+1. Identify the newly created database user.
+2. Retrieve the corresponding secret from AWS Secrets Manager.
+3. Update the RDS Proxy authentication configuration to allow the new database user.
+4. Verify that the user is available in the RDS Proxy configuration.
+5. Validate database connectivity through the RDS Proxy.
 
+**Note:** RDS Proxy access configuration is currently a manual activity and must be completed before proceeding with application deployment.
 
+### Step 3: Update Baseline Security Group for Glue VPC Endpoint
 
+**Frequency:** Once per AWS account.
 
+The baseline security group must be updated to allow connectivity from the newly introduced PCI Redaction Glue jobs to the required VPC endpoint.
 
+**Execution:**
 
+1. Identify the baseline security group associated with the Glue VPC endpoint.
+2. Update the required security group rules to allow connectivity from the new Glue jobs.
+3. Verify that the required network access is available.
+4. Ensure the change is completed for the respective AWS account.
 
+**Activity type:** Manual AWS configuration.
 
+**Note:** This activity is required only once per AWS account, not for every deployment.
 
-set -euo pipefail
+### Step 4: Provision PCI Redaction Infrastructure
 
-# Assume the TF Role
-case <+pipeline.variables.env_delegate> in
-    dev-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::697179190149:role/Terraform-Admin-Role --role-session-name DEVSession)
-        ;;
-    nonprod-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::518383396166:role/Terraform-Admin-Role --role-session-name NONPRODSession)
-        ;;
-    prod-iac-delegate)
-        aws_credentials_json=$(aws sts assume-role --role-arn arn:aws:iam::908976231039:role/Terraform-Admin-Role --role-session-name PRODSession)
-        ;;
-    *)
-        echo "Unable to assume role!"
-        exit 1
-        ;;
-esac
+Once the database and required network configurations are completed, provision the PCI Redaction infrastructure using the Harness IaC Build and Deploy pipeline.
 
-export AWS_ACCESS_KEY_ID=$(echo "$aws_credentials_json" | jq -er '.Credentials.AccessKeyId')
-export AWS_SECRET_ACCESS_KEY=$(echo "$aws_credentials_json" | jq -er '.Credentials.SecretAccessKey')
-export AWS_SESSION_TOKEN=$(echo "$aws_credentials_json" | jq -er '.Credentials.SessionToken')
+**Execution:**
 
-aws sts get-caller-identity
+1. Navigate to the PCI Redaction IaC pipeline.
+2. Select the appropriate environment-specific input set.
+3. Verify the AWS account, region, environment, and deployment configuration.
+4. Execute the pipeline.
+5. Review the Terraform/OpenTofu plan.
+6. Complete the required approval.
+7. Apply the infrastructure changes.
+8. Verify that all required AWS resources have been provisioned successfully.
 
-set -euo pipefail
+**Pipeline:** [Insert PCI Redaction IaC Pipeline Link]
 
-REGION="<+pipeline.variables.aws_region>"
+**Infrastructure components include:**
+- KMS
+- S3 buckets
+- IAM roles and policies
+- Lambda infrastructure
+- Glue-related infrastructure
+- DynamoDB resources
+- Other supporting resources required by PCI Redaction
 
-SECRET_NAME="redaction-database-credentials-<+pipeline.variables.database_user>-<+pipeline.variables.environment>"
+**Important – S3 Event Notification:**
 
-HOST="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.HOST>"
-PORT="<+pipeline.stages.Read_Existing_RDS_Secret.spec.execution.steps.Read_Existing_RDS_Secret.output.outputVariables.PORT>"
+The S3 event notification is required to trigger the S3 Scanning Lambda when objects are uploaded to the S3 landing bucket.
 
-DATABASE="<+pipeline.variables.database_name>"
-DB_USER="<+pipeline.variables.database_user>"
+After the S3 Scanning Lambda is deployed or rebuilt, re-run the S3 landing bucket IaC stack to ensure the S3 event notification configuration is applied correctly.
 
-GENERATED_PASSWORD="<+pipeline.stages.Generate_Password.spec.execution.steps.Generate_Password.output.outputVariables.GENERATED_PASSWORD>"
+Verify the following:
+- Lambda invocation permission is configured for the S3 bucket.
+- S3 event notification is associated with the correct Lambda.
+- The required S3 PUT event is configured.
+- The notification points to the correct environment-specific Lambda.
 
-echo "Checking database credentials secret..."
+### Step 5: Deploy Lambda and Glue Application Components
 
-if aws secretsmanager describe-secret \
-    --secret-id "$SECRET_NAME" \
-    --region "$REGION" >/dev/null 2>&1; then
+Once the infrastructure deployment is completed successfully, proceed with Lambda and Glue application deployments.
 
-    echo "Secret already exists. Skipping creation."
+Use the existing Master Deployment Pipeline in Harness.
 
-else
+**Execution:**
 
-    echo "Secret does not exist. Creating new secret."
+1. Navigate to the Master Deployment Pipeline.
+2. Select the appropriate environment-specific input set.
+3. Provide the approved Lambda image tags.
+4. Provide the approved Glue image tags.
+5. Verify the image tags and environment configuration.
+6. Execute the deployment.
+7. Validate that all Lambda and Glue components are deployed successfully.
 
-    SECRET_JSON=$(jq -n \
-        --arg engine "postgres" \
-        --arg host "$HOST" \
-        --arg port "$PORT" \
-        --arg database "$DATABASE" \
-        --arg username "$DB_USER" \
-        --arg password "$GENERATED_PASSWORD" \
-        '{
-            engine: $engine,
-            host: $host,
-            port: $port,
-            database: $database,
-            username: $username,
-            password: $password
-        }')
+**Pipeline:** [Insert Master Deployment Pipeline Link]
 
-    aws secretsmanager create-secret \
-        --name "$SECRET_NAME" \
-        --secret-string "$SECRET_JSON" \
-        --region "$REGION"
+#### 5.1 Lambda Deployment Details
 
-    echo "Secret created successfully."
+The following five Lambda functions must be deployed.
 
-fi
+| No. | Lambda Function Name | Image Tag |
+|---|---|---|
+| 1 | [Lambda Function 1] | [Image Tag] |
+| 2 | [Lambda Function 2] | [Image Tag] |
+| 3 | [Lambda Function 3] | [Image Tag] |
+| 4 | [Lambda Function 4] | [Image Tag] |
+| 5 | [Lambda Function 5] | [Image Tag] |
 
-echo "Secret verification completed."
-echo "Secret Name: $SECRET_NAME"
+#### 5.2 Glue Deployment Details
+
+The following four Glue jobs must be deployed.
+
+| No. | Glue Job Name | Image Tag |
+|---|---|---|
+| 1 | [Glue Job 1] | [Image Tag] |
+| 2 | [Glue Job 2] | [Image Tag] |
+| 3 | [Glue Job 3] | [Image Tag] |
+| 4 | [Glue Job 4] | [Image Tag] |
+
+**Important:** Always use the approved image tags for the respective environment. Ensure all five Lambda functions and four Glue jobs are deployed with the intended versions.
+
+## 4. Post-Deployment Validation Checklist
+
+After completing all deployment steps, SRE should perform the following validations.
+
+| No. | Validation Activity | Expected Result |
+|---|---|---|
+| 1 | Database creation | Redaction database is available in MS RDS |
+| 2 | Database user creation | User and credentials are available |
+| 3 | Secrets Manager | Database secret is available |
+| 4 | RDS Proxy access (RC/PROD) | New database user is configured |
+| 5 | Glue VPC endpoint SG | Required network access is available |
+| 6 | KMS | Required KMS resources are available |
+| 7 | S3 | Required buckets are created |
+| 8 | IAM | Required roles and policies are configured |
+| 9 | Lambda | All five Lambda functions are deployed |
+| 10 | Glue | All four Glue jobs are deployed |
+| 11 | S3 Event Notification | Scanning Lambda trigger is configured |
+| 12 | Application validation | Components are operational |
+
+## 5. Manual Activities Summary
+
+The following activities require manual intervention during deployment.
+
+| No. | Activity | Applicable Environment | Frequency |
+|---|---|---|---|
+| 1 | Configure new database user access in RDS Proxy | RC and PROD | Per database deployment |
+| 2 | Update baseline security group for Glue VPC endpoint | All applicable environments | Once per AWS account |
+| 3 | Re-run S3 landing bucket IaC stack to apply event notification after scanning Lambda deployment/rebuild | Applicable environments | Whenever required after Lambda deployment/rebuild |
+
+## 6. Deployment Execution Order
+
+Follow the sequence below to ensure dependencies are satisfied.
+
+1. Create Redaction database using the database build pipeline.
+2. For RC and PROD, configure the newly created database user in RDS Proxy.
+3. Update the baseline Glue VPC endpoint security group (once per AWS account).
+4. Deploy PCI Redaction infrastructure using the IaC pipeline.
+5. Deploy Lambda and Glue components using the Master Deployment Pipeline.
+6. Re-run the S3 landing bucket IaC stack to configure/refresh the S3 event notification after the scanning Lambda is deployed or rebuilt.
+7. Complete post-deployment validation.
+
+## 7. Deployment Sign-off
+
+Before considering the deployment complete, ensure:
+
+- [ ] Database creation is successful.
+- [ ] Database credentials are available in Secrets Manager.
+- [ ] RDS Proxy access is configured (RC/PROD).
+- [ ] Glue VPC endpoint security group is updated.
+- [ ] PCI Redaction IaC deployment is successful.
+- [ ] All five Lambda functions are deployed.
+- [ ] All four Glue jobs are deployed.
+- [ ] S3 event notification is configured and validated.
+- [ ] Post-deployment checks are completed.
